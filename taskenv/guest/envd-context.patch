@@ -1,0 +1,23 @@
+--- a/main.go
++++ b/main.go
+@@ -155,6 +155,9 @@
+ 		User:    defaultUser,
+ 		EnvVars: utils.NewMap[string, string](),
+ 	}
++	if err := defaults.RestoreTaskENVState(); err != nil {
++		log.Fatalf("restore TaskENV process defaults: %v", err)
++	}
+ 	isFCBoolStr := strconv.FormatBool(!isNotFC)
+ 	defaults.EnvVars.Store("E2B_SANDBOX", isFCBoolStr)
+ 	if err := os.WriteFile(filepath.Join(host.E2BRunDir, ".E2B_SANDBOX"), []byte(isFCBoolStr), 0o444); err != nil {
+--- a/internal/api/init.go
++++ b/internal/api/init.go
+@@ -229,7 +229,7 @@
+ 		}
+ 	}
+ 
+-	return nil
++	return a.defaults.SaveTaskENVState()
+ }
+ 
+ var nfsOptions = strings.Join([]string{

@@ -1,0 +1,21 @@
+[Unit]
+Description=TaskENV process and filesystem agent (upstream envd)
+After=local-fs.target network.target
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/lib/taskenv/envd
+RuntimeDirectory=taskenv-envd
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+Environment=TASKENV_ENVD_STATE=/run/taskenv-envd/context.json
+Restart=always
+RestartSec=1
+WorkingDirectory=/
+Environment=HOME=/root
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

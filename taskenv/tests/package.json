@@ -1,0 +1,1 @@
+{"private":true,"scripts":{"desktop":"node desktop.cjs"},"devDependencies":{"playwright":"1.63.0"}}

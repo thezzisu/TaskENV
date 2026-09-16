@@ -1,0 +1,86 @@
+#!/usr/bin/python3
+"""TaskENV desktop integration. systemd supervises; Selkies streams."""
+import argparse
+import json
+import os
+from pathlib import Path
+import secrets
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+VERSION = '0.1.0'
+DISPLAY = ':1'
+PORT = 6900
+
+
+def environment():
+    env = os.environ.copy()
+    env.update(DISPLAY=DISPLAY, XAUTHORITY=str(Path.home()/'.Xauthority'),
+               XDG_RUNTIME_DIR=f'/run/user/{os.getuid()}', XDG_SESSION_TYPE='x11',
+               DBUS_SESSION_BUS_ADDRESS=f'unix:path=/run/user/{os.getuid()}/bus')
+    return env
+
+
+def run(*args):
+    return subprocess.run(args, env=environment(), capture_output=True, text=True, timeout=10)
+
+
+def status():
+    services = {name: run('systemctl', '--user', 'is-active', name).stdout.strip()
+                for name in ('deskd-display.service', 'deskd.service')}
+    display_ready = run('xdpyinfo').returncode == 0
+    try:
+        with urllib.request.urlopen(f'http://127.0.0.1:{PORT}/', timeout=3) as response:
+            http_ready = response.status == 200
+    except urllib.error.HTTPError as error:
+        http_ready = error.code == 401
+    except OSError:
+        http_ready = False
+    return {'version': VERSION, 'backend': 'selkies', 'display': DISPLAY,
+            'port': PORT, 'services': services, 'display_ready': display_ready,
+            'stream_ready': http_ready,
+            'ready': display_ready and http_ready and all(v == 'active' for v in services.values())}
+
+
+def serve():
+    if os.getuid() == 0:
+        sys.exit('deskd must run as the desktop user')
+    directory = Path.home()/'.config/deskd'
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    credentials = directory/'credentials.json'
+    if not credentials.exists():
+        with credentials.open('x') as output:
+            output.write(json.dumps({'username': 'ubuntu', 'password': secrets.token_urlsafe(24)})+'\n')
+    credentials.chmod(0o600)
+    auth = json.loads(credentials.read_text())
+    env = environment()
+    env['SELKIES_BASIC_AUTH_USER'] = auth['username']
+    env['SELKIES_BASIC_AUTH_PASSWORD'] = auth['password']
+    args = ['/usr/bin/selkies', '--addr=0.0.0.0', f'--port={PORT}', '--encoder=jpeg',
+            '--audio-enabled=false', '--microphone-enabled=false', '--webcam-enabled=false',
+            '--gamepad-enabled=false', '--second-screen=false', '--enable-resize=false',
+            '--file-manager-path='+str(Path.home()/'Shared')]
+    os.execve(args[0], args, env)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='TaskENV desktop runtime')
+    parser.add_argument('--version', action='version', version='deskd '+VERSION)
+    parser.add_argument('command', choices=['serve', 'status', 'check', 'start', 'stop', 'restart'])
+    args = parser.parse_args()
+    if args.command == 'serve':
+        serve()
+    elif args.command in ('status', 'check'):
+        result = status()
+        print(json.dumps(result))
+        return 0 if result['ready'] else 1
+    else:
+        # Restart the stream only. Display restarts are explicit systemd actions.
+        return subprocess.call(['systemctl', '--user', args.command, 'deskd.service'], env=environment())
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

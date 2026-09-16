@@ -1,0 +1,22 @@
+FROM ubuntu:24.04@sha256:a61567bd31828687156d735ea8eb01ba4e37636e225dd6a48ba94136a70d9d61
+ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    systemd systemd-sysv libpam-systemd dbus dbus-user-session udev sudo ca-certificates curl iproute2 \
+    iputils-ping dnsutils procps python3 openssl xz-utils \
+    && rm -f /usr/sbin/policy-rc.d \
+    && rm -rf /var/lib/apt/lists/* \
+    && (id ubuntu || useradd --uid 1000 --create-home --shell /bin/bash ubuntu) \
+    && usermod -aG sudo ubuntu \
+    && printf '%s\n' 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu \
+    && chmod 0440 /etc/sudoers.d/ubuntu \
+    && mkdir -p /etc/taskenv /var/lib/systemd/linger \
+    && touch /etc/taskenv/systemd-envd /var/lib/systemd/linger/ubuntu \
+    && groupadd -f kvm && usermod -aG kvm ubuntu \
+    && printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0660"' > /etc/udev/rules.d/70-taskenv-kvm.rules
+COPY taskenv/artifacts/taskenv-envd_0.5.15+taskenv.1_amd64.deb /tmp/taskenv-envd.deb
+RUN dpkg -i /tmp/taskenv-envd.deb && rm /tmp/taskenv-envd.deb
+RUN systemctl enable envd.service \
+    && systemctl set-default multi-user.target \
+    && rm -f /etc/machine-id && touch /etc/machine-id
+# Networking/DNS originate in the AgentENV tools drive and namespace resolver.
+CMD ["/sbin/init"]

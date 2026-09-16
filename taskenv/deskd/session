@@ -1,0 +1,12 @@
+#!/bin/sh
+export DISPLAY=:1
+export XAUTHORITY="$HOME/.Xauthority"
+export XDG_CURRENT_DESKTOP=XFCE XDG_SESSION_DESKTOP=xfce XDG_SESSION_TYPE=x11
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+export XDG_DATA_DIRS=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+export PATH="/snap/bin:$PATH"
+xset s off
+xset s noblank
+systemctl --user import-environment DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE
+exec xfce4-session

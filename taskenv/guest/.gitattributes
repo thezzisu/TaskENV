@@ -1,0 +1,2 @@
+# Patch context markers are whitespace required by the unified-diff format.
+*.patch -whitespace
