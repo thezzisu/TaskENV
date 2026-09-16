@@ -50,7 +50,9 @@ taskenv connect <sandbox-id> --gui
 
 The CLI opens a random loopback port for the duration of the connection. Ctrl-C removes it. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
 
-The login is `ubuntu`; its generated password is stored inside the guest at `~/.config/deskd/credentials.json` (0600). Desktop authentication is unchanged in scope: this release does not implement credential borrowing or per-fork credential grants. A template captures its local desktop credentials, so clones share those credentials until rotated; TaskENV's existing sandbox access controls also apply.
+`taskenv connect --gui` handles the desktop login automatically. It reads `~/.config/deskd/credentials.json` through authenticated envd access and adds authentication only inside the temporary forwarder. No password entry or local credential file is needed. Credentials remain in CLI memory and are not placed in the browser URL. An alternate `--gui-port` retains the application's own login, without receiving deskd credentials.
+
+The guest credential file remains mode 0600 and is used by deskd's own authentication. A template captures these credentials, so clones share them until rotated; TaskENV's existing sandbox access controls also apply. Credential borrowing and per-fork grants remain deferred.
 
 ## Unattended desktop
 

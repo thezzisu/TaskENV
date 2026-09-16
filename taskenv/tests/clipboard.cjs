@@ -1,13 +1,11 @@
-const fs = require('fs');
 const { execFileSync } = require('child_process');
 const { chromium } = require('playwright');
 (async () => {
-  const [url, credentialsPath, sandbox, pane] = process.argv.slice(2);
+  const [url, sandbox, pane] = process.argv.slice(2);
   if (!/^[0-9a-f-]+$/.test(sandbox)) throw Error('invalid sandbox id');
-  const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({ httpCredentials: credentials, extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from(credentials.username + ':' + credentials.password).toString('base64') }, permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await browser.newPage({ permissions: ['clipboard-read', 'clipboard-write'] });
     await page.goto(url); await page.waitForTimeout(2500);
     const up = 'taskenv-client-' + Date.now(), down = 'taskenv-guest-' + Date.now();
     await page.evaluate(text => navigator.clipboard.writeText(text), up);

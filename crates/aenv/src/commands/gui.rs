@@ -4,16 +4,63 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
 use hyper_util::rt::TokioIo;
+use serde::Deserialize;
 use tokio::net::TcpListener;
 
+use crate::client::files::EnvdFilesClient;
 use crate::client::Client;
+
+const DESKD_PORT: u16 = 6900;
+const DESKD_CREDENTIALS: &str = ".config/deskd/credentials.json";
+
+#[derive(Clone, Deserialize)]
+struct DesktopCredentials {
+    username: String,
+    password: String,
+}
+
+impl DesktopCredentials {
+    async fn load(files: &EnvdFilesClient) -> Result<Self> {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            let mut response = files.download(DESKD_CREDENTIALS, None).await.context(
+                "cannot read deskd credentials; ensure this sandbox has a running deskd desktop",
+            )?;
+            let mut data = Vec::new();
+            while let Some(chunk) = response.chunk().await? {
+                ensure!(
+                    data.len() + chunk.len() <= 16 * 1024,
+                    "deskd credentials file is too large"
+                );
+                data.extend_from_slice(&chunk);
+            }
+            Self::parse(&data)
+        })
+        .await
+        .context("timed out reading deskd credentials")?
+    }
+
+    fn parse(data: &[u8]) -> Result<Self> {
+        // Deserialization errors can quote input values; never print this file.
+        let credentials: Self = serde_json::from_slice(data)
+            .map_err(|_| anyhow::anyhow!("invalid deskd credentials file"))?;
+        ensure!(
+            !credentials.username.is_empty()
+                && !credentials.username.contains(':')
+                && !credentials.username.chars().any(char::is_control)
+                && !credentials.password.is_empty()
+                && !credentials.password.chars().any(char::is_control),
+            "invalid deskd credentials file"
+        );
+        Ok(credentials)
+    }
+}
 
 #[derive(Clone)]
 struct Forward {
@@ -21,6 +68,7 @@ struct Forward {
     upstream: String,
     authority: String,
     routing: HeaderMap,
+    credentials: Option<DesktopCredentials>,
 }
 
 pub(super) async fn attach(
@@ -32,13 +80,18 @@ pub(super) async fn attach(
     let sandbox = client.connect_sandbox(&sandbox_id, super::DEFAULT_TIMEOUT_SECS)?;
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
     let authority = listener.local_addr()?.to_string();
-    let forward = Forward::new(
+    let mut forward = Forward::new(
         client.base_url(),
         &sandbox_id,
         port,
         sandbox.traffic_access_token.as_deref(),
         authority.clone(),
     )?;
+    // Other GUI ports may serve unrelated applications: never send deskd's
+    // password to them. Read the managed desktop's credentials through envd.
+    if port == DESKD_PORT {
+        forward.credentials = Some(DesktopCredentials::load(&client.files(&sandbox_id)?).await?);
+    }
     let url = format!("http://{authority}/");
     println!("Desktop: {url}");
     eprintln!("Forwarding sandbox port {port}. Ctrl-C disconnects; the desktop keeps running.");
@@ -96,6 +149,7 @@ impl Forward {
             upstream: format!("{}/proxy", base.trim_end_matches('/')),
             authority,
             routing,
+            credentials: None,
         })
     }
 
@@ -160,14 +214,24 @@ async fn relay(forward: &Forward, mut request: Request) -> Result<Response> {
         headers.remove(name);
     }
     headers.extend(forward.routing.clone());
-    let upstream = forward
+    if forward.credentials.is_some() {
+        headers.remove(header::AUTHORIZATION);
+    }
+    let mut upstream = forward
         .http
         .request(parts.method, url)
         .headers(headers)
-        .body(reqwest::Body::wrap_stream(body.into_data_stream()))
-        .send()
-        .await?;
+        .body(reqwest::Body::wrap_stream(body.into_data_stream()));
+    if let Some(credentials) = &forward.credentials {
+        upstream = upstream.basic_auth(&credentials.username, Some(&credentials.password));
+    }
+    let upstream = upstream.send().await?;
     let status = upstream.status();
+    if forward.credentials.is_some() && status == StatusCode::UNAUTHORIZED {
+        // Do not turn a stale/misconfigured deskd credential into a browser
+        // password prompt. The user reconnects after fixing the guest service.
+        bail!("deskd rejected its saved credentials; restart deskd and reconnect");
+    }
     let mut headers = upstream.headers().clone();
     strip_hop_headers(
         &mut headers,
@@ -245,6 +309,58 @@ mod tests {
     use futures::{SinkExt, StreamExt};
     use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+    fn desktop_credentials() -> DesktopCredentials {
+        DesktopCredentials::parse(br#"{"username":"ubuntu","password":"desktop-secret"}"#).unwrap()
+    }
+
+    #[test]
+    fn invalid_credentials_do_not_expose_file_contents() {
+        for data in [
+            br#"{"username":"ubuntu","password":{"desktop-secret":true}}"#.as_slice(),
+            br#"{"username":"ubuntu:invalid","password":"desktop-secret"}"#,
+            br#"{"username":"ubuntu","password":""}"#,
+            br#"{"username":"ubuntu","password":"desktop-secret\n"}"#,
+        ] {
+            let error = DesktopCredentials::parse(data)
+                .err()
+                .expect("invalid credentials");
+            assert_eq!(format!("{error:#}"), "invalid deskd credentials file");
+        }
+    }
+
+    #[tokio::test]
+    async fn reads_credentials_from_authenticated_envd_in_memory() {
+        let router = Router::new().fallback(|request: Request| async move {
+            if request.uri().path() == "/sandboxes/sandbox" {
+                assert_eq!(request.headers()["x-api-key"], "control-key");
+                return axum::Json(serde_json::json!({
+                    "state": "running", "envdAccessToken": "envd-token"
+                }))
+                .into_response();
+            }
+            assert_eq!(
+                request.uri(),
+                "/files?path=.config%2Fdeskd%2Fcredentials.json"
+            );
+            assert_eq!(request.headers()["x-agentenv-sandbox-id"], "sandbox");
+            assert_eq!(request.headers()["x-agentenv-target-port"], "49983");
+            assert_eq!(request.headers()["x-access-token"], "envd-token");
+            assert!(!request.headers().contains_key("x-api-key"));
+            r#"{"username":"ubuntu","password":"desktop-secret"}"#.into_response()
+        });
+        let (upstream, task) = start(router).await;
+        let files = tokio::task::spawn_blocking(move || {
+            Client::new(&format!("http://{upstream}"), "control-key")?.files("sandbox")
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        let credentials = DesktopCredentials::load(&files).await.unwrap();
+        assert_eq!(credentials.username, "ubuntu");
+        assert_eq!(credentials.password, "desktop-secret");
+        task.abort();
+    }
+
     #[test]
     fn gui_is_opt_in_and_cn_stays_a_shell_alias() {
         assert!(crate::Cli::try_parse_from(["aenv", "cn", "sandbox"]).is_ok());
@@ -268,10 +384,13 @@ mod tests {
         (address, task)
     }
 
-    async fn forward_to(base: &str) -> (String, tokio::task::JoinHandle<()>) {
+    async fn forward_to(
+        base: &str,
+        credentials: Option<DesktopCredentials>,
+    ) -> (String, tokio::task::JoinHandle<()>) {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let authority = listener.local_addr().unwrap().to_string();
-        let forward = Forward::new(
+        let mut forward = Forward::new(
             base,
             "sandbox",
             6900,
@@ -279,6 +398,7 @@ mod tests {
             authority.clone(),
         )
         .unwrap();
+        forward.credentials = credentials;
         let router = Router::new().fallback(proxy).with_state(Arc::new(forward));
         let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
         (format!("http://{authority}"), task)
@@ -305,7 +425,7 @@ mod tests {
             ([(header::CONTENT_TYPE, "application/octet-stream")], data)
         });
         let (upstream, upstream_task) = start(router).await;
-        let (url, task) = forward_to(&format!("http://{upstream}")).await;
+        let (url, task) = forward_to(&format!("http://{upstream}"), None).await;
         let http = reqwest::Client::new();
         for (name, value) in [
             ("origin", "https://foreign.invalid"),
@@ -334,9 +454,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn authenticates_http_without_browser_credentials_and_overrides_stale_login() {
+        let router = Router::new().fallback(|request: Request| async move {
+            assert_eq!(request.uri(), "/proxy");
+            assert_eq!(
+                request.headers()[header::AUTHORIZATION],
+                "Basic dWJ1bnR1OmRlc2t0b3Atc2VjcmV0"
+            );
+            "desktop ready"
+        });
+        let (upstream, upstream_task) = start(router).await;
+        let (url, task) =
+            forward_to(&format!("http://{upstream}"), Some(desktop_credentials())).await;
+        let http = reqwest::Client::new();
+        for request in [
+            http.get(&url),
+            http.get(&url)
+                .header(header::AUTHORIZATION, "Basic stale-browser-login"),
+        ] {
+            let response = request.send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(!response.headers().contains_key(header::WWW_AUTHENTICATE));
+            assert!(!response.headers().contains_key(header::AUTHORIZATION));
+            assert_eq!(response.text().await.unwrap(), "desktop ready");
+        }
+        task.abort();
+        upstream_task.abort();
+    }
+
+    #[tokio::test]
+    async fn rejected_saved_credentials_never_trigger_a_browser_login_prompt() {
+        let router = Router::new().fallback(|| async {
+            (
+                StatusCode::UNAUTHORIZED,
+                [(header::WWW_AUTHENTICATE, "Basic realm=desktop")],
+            )
+        });
+        let (upstream, upstream_task) = start(router).await;
+        let (url, task) =
+            forward_to(&format!("http://{upstream}"), Some(desktop_credentials())).await;
+        let response = reqwest::get(url).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        assert!(!response.headers().contains_key(header::WWW_AUTHENTICATE));
+        assert_eq!(
+            response.text().await.unwrap(),
+            "Sandbox desktop is unavailable"
+        );
+        task.abort();
+        upstream_task.abort();
+    }
+
+    #[tokio::test]
     async fn websocket_upgrade_relays_binary_frames_and_close() {
         let router = Router::new().fallback(|mut request: Request| async move {
             assert_eq!(request.uri(), "/proxy/websocket");
+            assert_eq!(
+                request.headers()[header::AUTHORIZATION],
+                "Basic dWJ1bnR1OmRlc2t0b3Atc2VjcmV0"
+            );
             assert_eq!(
                 request.headers()["e2b-traffic-access-token"],
                 "private-traffic-token"
@@ -369,7 +544,8 @@ mod tests {
                 .unwrap()
         });
         let (upstream, upstream_task) = start(router).await;
-        let (url, task) = forward_to(&format!("http://{upstream}")).await;
+        let (url, task) =
+            forward_to(&format!("http://{upstream}"), Some(desktop_credentials())).await;
         let (mut ws, _) = connect_async(format!("{}/websocket", url.replacen("http", "ws", 1)))
             .await
             .unwrap();
@@ -398,7 +574,8 @@ mod tests {
             )
         });
         let (upstream, upstream_task) = start(router).await;
-        let (url, task) = forward_to(&format!("http://{upstream}")).await;
+        let (url, task) =
+            forward_to(&format!("http://{upstream}"), Some(desktop_credentials())).await;
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()

@@ -73,9 +73,12 @@ aenv connect <sandbox-id> --gui --gui-port 8080 --no-open
 The default guest port is `6900`. The CLI opens a temporary listener on a random
 `127.0.0.1` port, prints its URL, and opens the browser unless `--no-open` is set.
 HTTP, file uploads/downloads, and WebSockets pass through the existing AgentENV
-data-plane proxy. Private sandbox traffic tokens stay in the CLI. The desktop's
-own login still applies. No server domains, firewall rules, or permanent host
-listeners are required.
+data-plane proxy. For deskd on the default port 6900, the CLI reads the desktop
+credentials from the sandbox through authenticated envd access and authenticates
+HTTP/WebSocket requests itself. The browser opens without a login prompt; the
+password stays in CLI memory and is never placed in the URL or saved locally.
+Other `--gui-port` values retain the application's own login. No server domains,
+firewall rules, or permanent host listeners are required.
 
 Ctrl-C closes the forward and releases its local port; it does not stop the
 sandbox's desktop. While attached, the CLI keeps the sandbox alive. After

@@ -1,19 +1,19 @@
-// Browser acceptance: URL and private credentials path are explicit inputs.
+// The CLI authenticates the desktop; the browser has no saved credentials.
 const fs = require('fs');
 const crypto = require('crypto');
 const { chromium } = require('playwright');
 (async () => {
-  const [url, credentialsPath, evidencePrefix] = process.argv.slice(2);
-  const credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
+  const [url, evidencePrefix] = process.argv.slice(2);
   const browser = await chromium.launch();
   try {
     const context = await browser.newContext({
-      httpCredentials: credentials,
-      extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from(credentials.username + ':' + credentials.password).toString('base64') },
       permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 1600, height: 960 }, acceptDownloads: true
     });
     const page = await context.newPage();
     const errors = [];
+    page.on('response', response => {
+      if (response.status() === 401) errors.push('Unexpected desktop login challenge');
+    });
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(url);
     await page.waitForTimeout(4000);

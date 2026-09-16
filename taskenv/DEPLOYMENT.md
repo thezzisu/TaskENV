@@ -31,13 +31,13 @@ A ready development desktop is kept running as `01a0aac3-e524-7ed1-97a1-f05d027e
 taskenv connect 01a0aac3-e524-7ed1-97a1-f05d027ecee5 --gui
 ```
 
-The username is `ubuntu`; its password is in the host's private `~/.config/taskenv/desktop-credentials.json`, and in the guest at `~/.config/deskd/credentials.json`. This is local desktop authentication only; credential borrowing, SSH-agent brokering, Git/OAuth/API-key sharing and new credential policy are explicitly deferred.
+The CLI handles desktop authentication automatically through envd; no password prompt or host credential file is needed. The guest keeps deskd's credential file at `~/.config/deskd/credentials.json`. Credential borrowing, SSH-agent brokering, Git/OAuth/API-key sharing and new credential policy are explicitly deferred.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| CLI tests / formatting / workspace clippy / release build | PASS; 59 CLI tests, clippy with all targets/features and warnings denied |
+| CLI tests / formatting / workspace clippy / release build | PASS; 63 CLI tests, clippy with all targets/features and warnings denied |
 | envd persistence unit tests | PASS; user/workdir/environment survive replacement; corrupt state is rejected; file mode 0600 |
 | Fresh headless base | PASS; systemd PID 1; one envd under systemd; D-Bus, udev and lingering user manager active; KVM device access; DNS and HTTP/HTTPS |
 | envd SIGKILL and automatic restart | PASS; `ubuntu`, workdir and initialized environment survive; runtime context file is root-owned 0600 |
@@ -45,6 +45,7 @@ The username is `ubuntu`; its password is in the host's private `~/.config/taske
 | Unattended desktop before viewer attach | PASS; real terminal keyboard input, PyAutoGUI and MSS screenshots, Chromium GUI opening a local web app |
 | deskd stream stop/restart/crash | PASS; same Xvfb PID remains; display and envd stay usable; systemd restarts Selkies |
 | Native Selkies upload/download and clipboard | PASS through temporary CLI forward; file bytes match; clipboard transfers in both directions |
+| Automatic GUI login | PASS on the ready sandbox with a fresh browser and no credentials configured in it; HTTP/WebSocket, files and clipboard work without a login prompt; direct guest access still requires authentication |
 | Base / desktop / development pause-resume | PASS |
 | Desktop fork | PASS; child has working persistent display, agent input and screenshot capture |
 | Final development desktop pause-resume with nested QEMU | PASS; capture guard stops the nested VM, outer envd/deskd/Docker recover, new KVM_RUN succeeds |
