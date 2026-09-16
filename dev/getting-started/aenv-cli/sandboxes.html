@@ -36,7 +36,7 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../../searchindex-51532da7.js";
+            window.path_to_searchindex_js = "../../searchindex-69b6a92b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc-c8205cda.js"></script>
@@ -241,9 +241,12 @@ aenv connect &lt;sandbox-id&gt; --gui --gui-port 8080 --no-open
 <p>The default guest port is <code>6900</code>. The CLI opens a temporary listener on a random
 <code>127.0.0.1</code> port, prints its URL, and opens the browser unless <code>--no-open</code> is set.
 HTTP, file uploads/downloads, and WebSockets pass through the existing AgentENV
-data-plane proxy. Private sandbox traffic tokens stay in the CLI. The desktop’s
-own login still applies. No server domains, firewall rules, or permanent host
-listeners are required.</p>
+data-plane proxy. For deskd on the default port 6900, the CLI reads the desktop
+credentials from the sandbox through authenticated envd access and authenticates
+HTTP/WebSocket requests itself. The browser opens without a login prompt; the
+password stays in CLI memory and is never placed in the URL or saved locally.
+Other <code>--gui-port</code> values retain the application’s own login. No server domains,
+firewall rules, or permanent host listeners are required.</p>
 <p>Ctrl-C closes the forward and releases its local port; it does not stop the
 sandbox’s desktop. While attached, the CLI keeps the sandbox alive. After
 disconnecting, the normal sandbox TTL applies. The template must provide its own
