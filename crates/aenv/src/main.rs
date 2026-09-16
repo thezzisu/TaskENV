@@ -3,6 +3,8 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::CompleteEnv;
 
 mod auth;
+#[path = "../../../taskenv/branding.rs"]
+mod branding;
 mod client;
 mod commands;
 mod grpc;
@@ -11,7 +13,7 @@ mod progress;
 mod pty;
 
 #[derive(Parser)]
-#[command(name = "aenv", version, about = "AENV CLI")]
+#[command(name = branding::name(), version = branding::version(), about = branding::about())]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,

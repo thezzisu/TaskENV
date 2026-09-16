@@ -1,3 +1,7 @@
+# TaskENV
+
+Everyday task sandboxes, based on AgentENV. See the [TaskENV guide](taskenv/README.md) for the desktop/headless templates, envd/deskd boundary, deployment and upstream update workflow. The original AgentENV documentation follows.
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/heading-logo-dark.svg" />
