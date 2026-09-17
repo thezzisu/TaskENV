@@ -38,6 +38,7 @@ Two recipes share one OS foundation. Desktop packages never get installed automa
 - `deskd-display.service`: persistent Xvfb + Xfce under the systemd user manager;
 - `deskd.service`: Selkies streaming, clipboard and file transfer, launched by `deskd serve`;
 - `deskd status` / `deskd check`: JSON capability and readiness reporting;
+- `deskd connect-info`: versioned desktop endpoint/authentication for the CLI, transported through envd's existing process API;
 - `deskd start|stop|restart`: service-manager controls for the stream;
 - `/usr/share/taskenv/desktop.json`: installed capability/version declaration.
 
@@ -50,9 +51,17 @@ taskenv connect <sandbox-id> --gui
 
 The CLI opens a random loopback port for the duration of the connection. Ctrl-C removes it. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
 
-`taskenv connect --gui` handles the desktop login automatically. It reads `~/.config/deskd/credentials.json` through authenticated envd access and adds authentication only inside the temporary forwarder. No password entry or local credential file is needed. Credentials remain in CLI memory and are not placed in the browser URL. An alternate `--gui-port` retains the application's own login, without receiving deskd credentials.
+`taskenv connect --gui` handles the desktop login automatically. It invokes `deskd connect-info` through envd's existing authenticated `Process.Start` interface. deskd owns its readiness, endpoint and authentication; the CLI does not read or know its credential-file format or path. No password entry or local credential file is needed. The connection response remains in CLI memory and is not printed or placed in the browser URL. An alternate `--gui-port` retains the application's own login, without receiving deskd credentials.
 
 The guest credential file remains mode 0600 and is used by deskd's own authentication. A template captures these credentials, so clones share them until rotated; TaskENV's existing sandbox access controls also apply. Credential borrowing and per-fork grants remain deferred.
+
+The version 1 connection response contains `version`, `port` and `authentication`
+(`scheme`, `username`, `password`). This is a private command interface, not an
+unauthenticated HTTP endpoint. It refuses terminal output, an unready desktop or
+unavailable credentials. The CLI requires a successful exit and rejects unknown
+protocol versions/authentication schemes without printing the response. Existing
+desktops need deskd 0.1.1 or newer. The independent envd restart-context fix has no
+GUI logic; neither upstream envd APIs nor protobufs change for desktop attachment.
 
 ## Unattended desktop
 

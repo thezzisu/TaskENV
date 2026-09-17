@@ -7,9 +7,9 @@ import subprocess
 import tempfile
 
 ROOT=Path(__file__).resolve().parent
-OUT=ROOT.parent/'artifacts/deskd_0.1.0_all.deb'
+OUT=ROOT.parent/'artifacts/deskd_0.1.1_all.deb'
 CONTROL=b'''Package: deskd
-Version: 0.1.0
+Version: 0.1.1
 Architecture: all
 Maintainer: thezzisu <thezzisu@gmail.com>
 Section: misc
@@ -33,6 +33,6 @@ with tempfile.TemporaryDirectory(prefix='deskd-package-') as temp:
         target.chmod(0o755 if source in ('deskd','session') else 0o644)
     manifest=root/'usr/share/taskenv/desktop.json'
     manifest.parent.mkdir(parents=True,exist_ok=True)
-    manifest.write_text('{"capability":"desktop","version":"0.1.0","backend":"selkies","port":6900,"display":":1"}\n')
+    manifest.write_text('{"capability":"desktop","version":"0.1.1","backend":"selkies","port":6900,"display":":1","connection_protocol":1}\n')
     subprocess.run(['dpkg-deb','--root-owner-group','--build',str(root),str(OUT)],check=True,env=os.environ | {'SOURCE_DATE_EPOCH':'1789516800'})
 print(OUT)

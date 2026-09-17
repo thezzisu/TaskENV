@@ -10,55 +10,92 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Router;
+use envd::process::{process_event, StartResponse};
+use futures::StreamExt;
 use hyper_util::rt::TokioIo;
 use serde::Deserialize;
 use tokio::net::TcpListener;
 
-use crate::client::files::EnvdFilesClient;
 use crate::client::Client;
+use crate::grpc::{build_start_request, StartOpts, Transport};
 
 const DESKD_PORT: u16 = 6900;
-const DESKD_CREDENTIALS: &str = ".config/deskd/credentials.json";
+
+#[derive(Deserialize)]
+struct DesktopConnection {
+    version: u32,
+    port: u16,
+    authentication: DesktopCredentials,
+}
 
 #[derive(Clone, Deserialize)]
 struct DesktopCredentials {
+    scheme: String,
     username: String,
     password: String,
 }
 
-impl DesktopCredentials {
-    async fn load(files: &EnvdFilesClient) -> Result<Self> {
+impl DesktopConnection {
+    async fn load(transport: &Transport) -> Result<Self> {
         tokio::time::timeout(Duration::from_secs(10), async {
-            let mut response = files.download(DESKD_CREDENTIALS, None).await.context(
-                "cannot read deskd credentials; ensure this sandbox has a running deskd desktop",
-            )?;
+            let request = build_start_request(StartOpts {
+                cmd: "/usr/bin/deskd",
+                args: vec!["connect-info".to_string()],
+                envs: Default::default(),
+                pty: None,
+                stdin: false,
+            });
+            let mut stream = transport.server_stream::<_, StartResponse>("Start", request).await
+                .map_err(|_| anyhow::anyhow!("cannot invoke deskd connect-info; upgrade deskd to 0.1.1 or later and check the desktop"))?;
             let mut data = Vec::new();
-            while let Some(chunk) = response.chunk().await? {
-                ensure!(
-                    data.len() + chunk.len() <= 16 * 1024,
-                    "deskd credentials file is too large"
-                );
-                data.extend_from_slice(&chunk);
+            while let Some(message) = stream.next().await {
+                // Command output and RPC errors may contain connection secrets.
+                // Collect stdout privately; never print stderr or exit details.
+                let message = message.map_err(|_| anyhow::anyhow!("deskd connection request failed"))?;
+                match message.event.and_then(|event| event.event) {
+                    Some(process_event::Event::Data(event)) => {
+                        if let Some(process_event::data_event::Output::Stdout(chunk)) = event.output {
+                            ensure!(data.len() + chunk.len() <= 16 * 1024, "deskd connection response is too large");
+                            data.extend_from_slice(&chunk);
+                        }
+                    }
+                    Some(process_event::Event::End(event)) => {
+                        ensure!(event.exited && event.exit_code == 0,
+                            "deskd connect-info failed; ensure deskd 0.1.1 or later is installed and deskd check succeeds");
+                        return Self::parse(&data);
+                    }
+                    _ => {}
+                }
             }
-            Self::parse(&data)
+            bail!("deskd connection request ended without an exit event")
         })
         .await
-        .context("timed out reading deskd credentials")?
+        .context("timed out requesting desktop connection information")?
     }
 
     fn parse(data: &[u8]) -> Result<Self> {
-        // Deserialization errors can quote input values; never print this file.
-        let credentials: Self = serde_json::from_slice(data)
-            .map_err(|_| anyhow::anyhow!("invalid deskd credentials file"))?;
+        // Deserialization errors can quote input values; never print the response.
+        let connection: Self = serde_json::from_slice(data)
+            .map_err(|_| anyhow::anyhow!("invalid deskd connection response"))?;
+        ensure!(
+            connection.version == 1,
+            "unsupported deskd connection protocol"
+        );
+        ensure!(connection.port != 0, "invalid deskd connection port");
+        let credentials = &connection.authentication;
+        ensure!(
+            credentials.scheme == "basic",
+            "unsupported deskd authentication scheme"
+        );
         ensure!(
             !credentials.username.is_empty()
                 && !credentials.username.contains(':')
                 && !credentials.username.chars().any(char::is_control)
                 && !credentials.password.is_empty()
                 && !credentials.password.chars().any(char::is_control),
-            "invalid deskd credentials file"
+            "invalid deskd connection response"
         );
-        Ok(credentials)
+        Ok(connection)
     }
 }
 
@@ -78,6 +115,19 @@ pub(super) async fn attach(
     open: bool,
 ) -> Result<()> {
     let sandbox = client.connect_sandbox(&sandbox_id, super::DEFAULT_TIMEOUT_SECS)?;
+    // deskd owns its endpoint and authentication. envd is only the existing
+    // authenticated command transport, with no desktop-specific API or paths.
+    let connection = if port == DESKD_PORT {
+        Some(
+            DesktopConnection::load(
+                &client.transport(&sandbox_id, sandbox.envd_access_token.as_deref())?,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let port = connection.as_ref().map_or(port, |info| info.port);
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
     let authority = listener.local_addr()?.to_string();
     let mut forward = Forward::new(
@@ -87,11 +137,7 @@ pub(super) async fn attach(
         sandbox.traffic_access_token.as_deref(),
         authority.clone(),
     )?;
-    // Other GUI ports may serve unrelated applications: never send deskd's
-    // password to them. Read the managed desktop's credentials through envd.
-    if port == DESKD_PORT {
-        forward.credentials = Some(DesktopCredentials::load(&client.files(&sandbox_id)?).await?);
-    }
+    forward.credentials = connection.map(|info| info.authentication);
     let url = format!("http://{authority}/");
     println!("Desktop: {url}");
     eprintln!("Forwarding sandbox port {port}. Ctrl-C disconnects; the desktop keeps running.");
@@ -309,56 +355,143 @@ mod tests {
     use futures::{SinkExt, StreamExt};
     use tokio_tungstenite::{connect_async, tungstenite::Message};
 
+    fn connection_json() -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "version": 1, "port": 6900,
+            "authentication": {"scheme": "basic", "username": "ubuntu", "password": "desktop-secret"}
+        })).unwrap()
+    }
+
     fn desktop_credentials() -> DesktopCredentials {
-        DesktopCredentials::parse(br#"{"username":"ubuntu","password":"desktop-secret"}"#).unwrap()
+        DesktopConnection::parse(&connection_json())
+            .unwrap()
+            .authentication
     }
 
     #[test]
-    fn invalid_credentials_do_not_expose_file_contents() {
-        for data in [
-            br#"{"username":"ubuntu","password":{"desktop-secret":true}}"#.as_slice(),
-            br#"{"username":"ubuntu:invalid","password":"desktop-secret"}"#,
-            br#"{"username":"ubuntu","password":""}"#,
-            br#"{"username":"ubuntu","password":"desktop-secret\n"}"#,
+    fn validates_connection_contract_without_exposing_secrets() {
+        let valid: serde_json::Value = serde_json::from_slice(&connection_json()).unwrap();
+        for (field, value) in [
+            ("version", serde_json::json!(2)),
+            ("port", serde_json::json!(0)),
+            (
+                "authentication",
+                serde_json::json!({"scheme":"unsupported", "username":"ubuntu", "password":"desktop-secret"}),
+            ),
+            (
+                "authentication",
+                serde_json::json!({"scheme":"basic", "username":"ubuntu:invalid", "password":"desktop-secret"}),
+            ),
+            (
+                "authentication",
+                serde_json::json!({"scheme":"basic", "username":"ubuntu", "password":""}),
+            ),
+            (
+                "authentication",
+                serde_json::json!({"scheme":"basic", "username":"ubuntu", "password":{"desktop-secret":true}}),
+            ),
         ] {
-            let error = DesktopCredentials::parse(data)
+            let mut input = valid.clone();
+            input[field] = value;
+            let error = DesktopConnection::parse(&serde_json::to_vec(&input).unwrap())
                 .err()
-                .expect("invalid credentials");
-            assert_eq!(format!("{error:#}"), "invalid deskd credentials file");
+                .expect("invalid connection descriptor");
+            assert!(!format!("{error:#}").contains("desktop-secret"));
         }
+        let mut alternate_port = valid;
+        alternate_port["port"] = serde_json::json!(7900);
+        assert_eq!(
+            DesktopConnection::parse(&serde_json::to_vec(&alternate_port).unwrap())
+                .unwrap()
+                .port,
+            7900
+        );
+    }
+
+    async fn process_server(
+        output: Vec<u8>,
+        exit_code: Option<i32>,
+    ) -> (Transport, tokio::task::JoinHandle<()>) {
+        use prost::Message as _;
+        let router = Router::new().fallback(move |request: Request| {
+            let output = output.clone();
+            async move {
+                assert_eq!(request.uri(), "/process.Process/Start");
+                assert_eq!(request.headers()["x-agentenv-sandbox-id"], "sandbox");
+                assert_eq!(request.headers()["x-agentenv-target-port"], "49983");
+                assert_eq!(request.headers()["x-access-token"], "envd-token");
+                assert!(!request.headers().contains_key("x-api-key"));
+                let request = to_bytes(request.into_body(), 4096).await.unwrap();
+                let start = envd::process::StartRequest::decode(&request[5..]).unwrap();
+                let process = start.process.unwrap();
+                assert_eq!(process.cmd, "/usr/bin/deskd");
+                assert_eq!(process.args, ["connect-info"]);
+                assert!(start.pty.is_none());
+                assert_eq!(start.stdin, Some(false));
+                let mut events = vec![process_event::Event::Data(process_event::DataEvent {
+                    output: Some(process_event::data_event::Output::Stderr(
+                        b"sensitive diagnostic must not reach terminal".to_vec(),
+                    )),
+                })];
+                for part in output.chunks(17) {
+                    events.push(process_event::Event::Data(process_event::DataEvent {
+                        output: Some(process_event::data_event::Output::Stdout(part.to_vec())),
+                    }));
+                }
+                if let Some(code) = exit_code {
+                    events.push(process_event::Event::End(process_event::EndEvent {
+                        exit_code: code,
+                        exited: true,
+                        status: String::new(),
+                        error: Some("sensitive error".to_string()),
+                    }));
+                }
+                let mut body = Vec::new();
+                for event in events {
+                    let payload = StartResponse {
+                        event: Some(envd::process::ProcessEvent { event: Some(event) }),
+                    }
+                    .encode_to_vec();
+                    body.push(0);
+                    body.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+                    body.extend_from_slice(&payload);
+                }
+                ([(header::CONTENT_TYPE, "application/connect+proto")], body)
+            }
+        });
+        let (address, task) = start(router).await;
+        (
+            Transport::new(&format!("http://{address}"), "sandbox", Some("envd-token")).unwrap(),
+            task,
+        )
     }
 
     #[tokio::test]
-    async fn reads_credentials_from_authenticated_envd_in_memory() {
-        let router = Router::new().fallback(|request: Request| async move {
-            if request.uri().path() == "/sandboxes/sandbox" {
-                assert_eq!(request.headers()["x-api-key"], "control-key");
-                return axum::Json(serde_json::json!({
-                    "state": "running", "envdAccessToken": "envd-token"
-                }))
-                .into_response();
-            }
-            assert_eq!(
-                request.uri(),
-                "/files?path=.config%2Fdeskd%2Fcredentials.json"
-            );
-            assert_eq!(request.headers()["x-agentenv-sandbox-id"], "sandbox");
-            assert_eq!(request.headers()["x-agentenv-target-port"], "49983");
-            assert_eq!(request.headers()["x-access-token"], "envd-token");
-            assert!(!request.headers().contains_key("x-api-key"));
-            r#"{"username":"ubuntu","password":"desktop-secret"}"#.into_response()
-        });
-        let (upstream, task) = start(router).await;
-        let files = tokio::task::spawn_blocking(move || {
-            Client::new(&format!("http://{upstream}"), "control-key")?.files("sandbox")
-        })
-        .await
-        .unwrap()
-        .unwrap();
-        let credentials = DesktopCredentials::load(&files).await.unwrap();
-        assert_eq!(credentials.username, "ubuntu");
-        assert_eq!(credentials.password, "desktop-secret");
+    async fn gets_connection_info_through_existing_authenticated_process_api() {
+        let (transport, task) = process_server(connection_json(), Some(0)).await;
+        let info = DesktopConnection::load(&transport).await.unwrap();
+        assert_eq!(info.port, 6900);
+        assert_eq!(info.authentication.username, "ubuntu");
+        assert_eq!(info.authentication.password, "desktop-secret");
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn refuses_failed_incomplete_and_oversized_process_output() {
+        for (output, exit_code) in [
+            (connection_json(), Some(1)),
+            (connection_json(), None),
+            (vec![b'x'; 16 * 1024 + 1], Some(0)),
+        ] {
+            let (transport, task) = process_server(output, exit_code).await;
+            let error = DesktopConnection::load(&transport)
+                .await
+                .err()
+                .expect("connection must fail");
+            assert!(!format!("{error:#}").contains("desktop-secret"));
+            assert!(!format!("{error:#}").contains("sensitive"));
+            task.abort();
+        }
     }
 
     #[test]

@@ -8,7 +8,7 @@ Deployed on 2026-09-16 to the existing Fedora host. Repository: https://github.c
 - `taskenv.service`: alias of the existing `aenv.service`, now described as TaskENV. There is one server, one state store, and the same API/configuration format.
 - Tools drive `0.1.2-taskenv.1`: upstream envd fallback plus opt-in handoff to systemd on TaskENV bases.
 - `taskenv-envd` `0.5.15+taskenv.1`: upstream `e2b-dev/infra@2026.17` (`9c3b7c5`) with process-default persistence. Wire/API version remains 0.5.15.
-- `deskd` 0.1.0: independently packaged desktop integration, running Selkies `2.0.0rc0`, Xfce and Xvfb through systemd user services.
+- `deskd` 0.1.1: independently packaged desktop integration, running Selkies `2.0.0rc0`, Xfce and Xvfb through systemd user services.
 - Chromium 153.0.8010.36 from Canonical's stable Snap channel.
 - Development: nvm 0.40.3, Node 24.21.0 LTS, Rust 1.98.1, Go 1.27.1, uv 0.12.14, Git 2.43, official Docker 29.8.1, Compose 5.5.1 and Buildx 0.37.1.
 
@@ -19,9 +19,9 @@ All four use Ubuntu 24.04, systemd PID 1, user `ubuntu` with passwordless sudo, 
 | Name | Template ID |
 | --- | --- |
 | `taskenv-ubuntu-24-04-base` | `01a0aabb-a6c4-7a93-b076-c55112495f4e` |
-| `taskenv-ubuntu-24-04-desktop` | `01a0aabb-d2ac-7171-98f0-8781c1157e22` |
+| `taskenv-ubuntu-24-04-desktop` | `01a0ad22-10ed-7992-9ab9-c132542e1ea2` |
 | `taskenv-ubuntu-24-04-dev` | `01a0aabb-baed-7bd1-a9f9-ebb14644e6d7` |
-| `taskenv-ubuntu-24-04-dev-desktop` | `01a0aac3-d560-7422-b686-15f965f04128` |
+| `taskenv-ubuntu-24-04-dev-desktop` | `01a0ad22-1588-7c81-bf81-0b36541dd52f` |
 
 The earlier `ubuntu-24-04-base` and `ubuntu-24-04-dev` templates remain available for compatibility/rollback. Existing user sandboxes were preserved. Temporary TaskENV staging templates and test/build sandboxes are removed after verification.
 
@@ -31,13 +31,13 @@ A ready development desktop is kept running as `01a0aac3-e524-7ed1-97a1-f05d027e
 taskenv connect 01a0aac3-e524-7ed1-97a1-f05d027ecee5 --gui
 ```
 
-The CLI handles desktop authentication automatically through envd; no password prompt or host credential file is needed. The guest keeps deskd's credential file at `~/.config/deskd/credentials.json`. Credential borrowing, SSH-agent brokering, Git/OAuth/API-key sharing and new credential policy are explicitly deferred.
+The CLI asks `deskd connect-info` for a versioned endpoint/authentication response using envd's unchanged authenticated process API; no password prompt or host credential file is needed. The guest keeps deskd's credential file at `~/.config/deskd/credentials.json`. Credential borrowing, SSH-agent brokering, Git/OAuth/API-key sharing and new credential policy are explicitly deferred.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| CLI tests / formatting / workspace clippy / release build | PASS; 63 CLI tests, clippy with all targets/features and warnings denied |
+| CLI tests / formatting / workspace clippy / release build | PASS; 64 CLI tests, clippy with all targets/features and warnings denied |
 | envd persistence unit tests | PASS; user/workdir/environment survive replacement; corrupt state is rejected; file mode 0600 |
 | Fresh headless base | PASS; systemd PID 1; one envd under systemd; D-Bus, udev and lingering user manager active; KVM device access; DNS and HTTP/HTTPS |
 | envd SIGKILL and automatic restart | PASS; `ubuntu`, workdir and initialized environment survive; runtime context file is root-owned 0600 |
@@ -45,6 +45,7 @@ The CLI handles desktop authentication automatically through envd; no password p
 | Unattended desktop before viewer attach | PASS; real terminal keyboard input, PyAutoGUI and MSS screenshots, Chromium GUI opening a local web app |
 | deskd stream stop/restart/crash | PASS; same Xvfb PID remains; display and envd stay usable; systemd restarts Selkies |
 | Native Selkies upload/download and clipboard | PASS through temporary CLI forward; file bytes match; clipboard transfers in both directions |
+| deskd connection contract / upstream envd | PASS; four deskd unit tests; typed response via standard Process.Start; real desktop/files work with unchanged upstream envd 0.5.15 in a disposable instance |
 | Automatic GUI login | PASS on the ready sandbox with a fresh browser and no credentials configured in it; HTTP/WebSocket, files and clipboard work without a login prompt; direct guest access still requires authentication |
 | Base / desktop / development pause-resume | PASS |
 | Desktop fork | PASS; child has working persistent display, agent input and screenshot capture |
@@ -75,3 +76,11 @@ Build/provisioning recipes and tests are tracked under `taskenv/`. Local package
 - `final-docker-browser.log`, `nested-before-pause.log`: Docker and nested-KVM checks.
 
 The original AgentENV implementation is changed only at the CLI branding hook and root README for this distribution. The envd customization is an explicit, checked patch applied to a temporary upstream source tree; deskd and template recipes are independent distribution files. This keeps future AgentENV merges and selective cherry-picks small.
+
+## Desktop connection boundary (2026-09-17)
+
+The installed CLI invokes `/usr/bin/deskd connect-info` without a shell or PTY, through the existing authenticated envd process API. It consumes the version 1 response privately, validates the endpoint/authentication and requires a successful exit. The CLI no longer imports the file client or knows deskd's credential path. No upstream envd source, client transport, protobuf, or service changes were needed.
+
+The small envd execution-context persistence patch remains independent: it fixes user/workdir/environment loss after a daemon crash and contains no desktop logic. Its removal would reintroduce that tested regression. A disposable desktop actually ran `/agentenv/envd` (unmodified version 0.5.15, upstream commit 9c3b7c5) for automatic-login and file-transfer acceptance, establishing that desktop attachment does not depend on that patch.
+
+Both TaskENV desktop templates include deskd 0.1.1, and the existing ready sandbox was upgraded without restarting its display. Temporary compatibility instances and staging templates were cleaned up after testing. Local evidence is under `taskenv/artifacts/deskd-boundary/`.

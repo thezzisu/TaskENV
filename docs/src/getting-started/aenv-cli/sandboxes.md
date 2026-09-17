@@ -73,10 +73,11 @@ aenv connect <sandbox-id> --gui --gui-port 8080 --no-open
 The default guest port is `6900`. The CLI opens a temporary listener on a random
 `127.0.0.1` port, prints its URL, and opens the browser unless `--no-open` is set.
 HTTP, file uploads/downloads, and WebSockets pass through the existing AgentENV
-data-plane proxy. For deskd on the default port 6900, the CLI reads the desktop
-credentials from the sandbox through authenticated envd access and authenticates
-HTTP/WebSocket requests itself. The browser opens without a login prompt; the
-password stays in CLI memory and is never placed in the URL or saved locally.
+data-plane proxy. For deskd on the default port 6900, the CLI invokes
+`deskd connect-info` through envd's standard authenticated process API. deskd
+supplies its endpoint and authentication (requires deskd 0.1.1 or newer); envd
+only executes the command. The browser opens without a login prompt; the response
+stays in CLI memory and is never printed, placed in the URL or saved locally.
 Other `--gui-port` values retain the application's own login. No server domains,
 firewall rules, or permanent host listeners are required.
 

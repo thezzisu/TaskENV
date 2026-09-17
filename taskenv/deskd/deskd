@@ -10,7 +10,7 @@ import sys
 import urllib.error
 import urllib.request
 
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 DISPLAY = ':1'
 PORT = 6900
 
@@ -44,6 +44,25 @@ def status():
             'ready': display_ready and http_ready and all(v == 'active' for v in services.values())}
 
 
+def connect_info():
+    """Private connection contract, invoked through authenticated process access."""
+    if os.getuid() == 0:
+        raise RuntimeError('connect-info must run as the desktop user')
+    if not status()['ready']:
+        raise RuntimeError('desktop is not ready; run deskd check')
+    try:
+        auth = json.loads((Path.home()/'.config/deskd/credentials.json').read_text())
+        username, password = auth['username'], auth['password']
+        if (not isinstance(username, str) or not isinstance(password, str)
+                or not username or ':' in username or not password
+                or any(ord(c) < 32 or ord(c) == 127 for c in username + password)):
+            raise ValueError('invalid credentials')
+    except (OSError, ValueError, KeyError, TypeError):
+        raise RuntimeError('desktop authentication is unavailable; restart deskd') from None
+    return {'version': 1, 'port': PORT,
+            'authentication': {'scheme': 'basic', 'username': username, 'password': password}}
+
+
 def serve():
     if os.getuid() == 0:
         sys.exit('deskd must run as the desktop user')
@@ -68,10 +87,22 @@ def serve():
 def main():
     parser = argparse.ArgumentParser(description='TaskENV desktop runtime')
     parser.add_argument('--version', action='version', version='deskd '+VERSION)
-    parser.add_argument('command', choices=['serve', 'status', 'check', 'start', 'stop', 'restart'])
+    parser.add_argument('command', choices=['serve', 'status', 'check', 'connect-info', 'start', 'stop', 'restart'])
     args = parser.parse_args()
     if args.command == 'serve':
         serve()
+    elif args.command == 'connect-info':
+        # This is an authenticated machine interface, never a public HTTP route.
+        # Do not dump credentials into an interactive terminal by accident.
+        if sys.stdout.isatty():
+            print('connect-info is for TaskENV GUI attachment; use deskd status for diagnostics', file=sys.stderr)
+            return 1
+        try:
+            result = connect_info()
+        except (RuntimeError, subprocess.SubprocessError, OSError) as error:
+            print(str(error), file=sys.stderr)
+            return 1
+        print(json.dumps(result))
     elif args.command in ('status', 'check'):
         result = status()
         print(json.dumps(result))
