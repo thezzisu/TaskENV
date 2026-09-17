@@ -6,7 +6,7 @@ Environment=DISPLAY=:1
 Environment=XAUTHORITY=%h/.Xauthority
 Environment=XDG_RUNTIME_DIR=%t
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
-ExecStart=/usr/bin/xvfb-run --server-num=1 --auth-file=%h/.Xauthority --server-args="-screen 0 1600x900x24 -nolisten tcp -noreset" /usr/lib/deskd/session
+ExecStart=/usr/bin/xvfb-run --server-num=1 --auth-file=%h/.Xauthority --server-args="-screen 0 1600x900x24 -nolisten tcp -noreset" /agentenv/desktop-session
 Restart=always
 RestartSec=2
 

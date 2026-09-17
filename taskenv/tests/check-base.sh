@@ -1,13 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 test "$(cat /proc/1/comm)" = systemd
-sudo systemctl is-active envd dbus systemd-udevd user@1000.service
-pid=$(systemctl show envd --property=MainPID --value)
+sudo systemctl is-active taskenv-envd dbus systemd-udevd user@1000.service
+pid=$(systemctl show taskenv-envd --property=MainPID --value)
 test "$pid" -gt 1
 test "$(pgrep -x envd | wc -l)" -eq 1
 test "$(awk '/PPid/{print $2}' /proc/$pid/status)" -eq 1
 ! pgrep -f '^/agentenv/bin/busybox runsv /run/sv/envd$'
-test "$(cat /agentenv/tools-drive-version)" = 0.1.2-taskenv.1
+test "$(cat /agentenv/tools-drive-version)" = 0.1.2-taskenv.2
+test "$(sudo readlink /proc/$pid/exe)" = /agentenv/envd
+test "$(findmnt -n -T /agentenv/envd -o SOURCE)" = "$(findmnt -n -T /agentenv/deskd -o SOURCE)"
+findmnt -n -T /agentenv/envd -o SOURCE | grep '^/dev/vda\[/agentenv\]$'
+test "$(readlink -f /etc/systemd/system/taskenv-envd.service)" = /agentenv/systemd/taskenv-envd.service
+for path in /usr/bin/deskd /usr/local/bin/deskd /usr/local/bin/envd /usr/lib/taskenv/envd /usr/lib/deskd; do
+    test ! -e "$path" && test ! -L "$path"
+done
+! dpkg-query -W -f='${Status}\n' taskenv-envd deskd 2>/dev/null | grep 'install ok installed'
 sudo -n true
 ip route get 1.1.1.1 >/dev/null
 getent ahostsv4 github.com >/dev/null

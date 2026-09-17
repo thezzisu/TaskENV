@@ -1,6 +1,6 @@
-# AgentENV envd Tools Drive
+# AgentENV Tools Drive (TaskENV distribution)
 
-This directory contains the source for the envd tools drive attached to every
+This directory contains the source for the envd/deskd tools drive attached to every
 Firecracker guest as `/dev/vda`.
 
 This source is here so contributors can inspect and reproduce the tools drive
@@ -13,7 +13,7 @@ The build is intentionally self-contained:
 
 1. Clone and compile `envd` from `e2b-dev/infra` at `ENVD_REF`.
 2. Assemble the guest tools rootfs with BusyBox, `/init`, `/agentenv/pivot-init`,
-   and `/agentenv/envd`.
+   `/agentenv/envd`, `/agentenv/deskd`, and their systemd units.
 3. Create `/tools.ext4`.
 
 Requirements:
@@ -86,7 +86,7 @@ The build accepts these Make variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TOOLS_VERSION` | `0.1.0` | Immutable SemVer release of the complete tools drive |
+| `TOOLS_VERSION` | `0.1.2-taskenv.2` | Immutable SemVer release of the complete tools drive |
 | `ENVD_REF` | `2026.17` | Tag, branch, or fetchable commit to build from the envd upstream repository |
 | `ENVD_UPSTREAM_REPO` | `https://github.com/e2b-dev/infra.git` | Repository containing `packages/envd` |
 | `ARCH` | host architecture, normalized to `amd64` or `arm64` | Target architecture |
@@ -149,3 +149,23 @@ directory under `deps_path`; changing its contents requires a new version.
 Root filesystem resizing is performed by the host-side `overlaybd-resize`
 binary installed from the OverlayBD package under `deps_path`; it is not part
 of this guest tools drive.
+
+## TaskENV guest integration
+
+Both agents use the existing tools-drive injection: `/init` binds `/agentenv`
+from `/dev/vda` into the user rootfs before handing off to its init. They never
+install aliases over distro commands. Snapshot version probing uses the absolute
+`/agentenv/envd` path.
+
+Systemd rootfs images enable `/agentenv/systemd/taskenv-envd.service` through
+standard unit links. `pivot-init` detects this enabled unit and skips runsv;
+arbitrary images without it retain upstream runsv. Desktop images additionally
+enable `taskenv-display.service` and `taskenv-deskd.service` in the desktop user's
+manager. All executable agent code and units remain on the same tools drive.
+Selkies, Xfce, Python and browser packages belong to the desktop rootfs.
+
+The envd execution-context patch in `envd/` is compiled and unit-tested here.
+Desktop sources live in `deskd/`. There are no separate agent Debian packages,
+post-build injection scripts, or alternate guest drive loaders. The local ext4
+configuration above is an upstream-supported installation path (also retained
+by newer upstream releases that publish OCI rootfs tools images).

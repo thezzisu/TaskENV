@@ -4,13 +4,21 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 target=${CARGO_TARGET_DIR:-$repo/target}
 test "$(id -u)" = 0
-test -s "$repo/taskenv/artifacts/tools/tools.ext4"
-version=$(cat "$repo/taskenv/artifacts/tools/version")
+version=0.1.2-taskenv.2
+tools="$repo/tools-image/out/tools-$version-amd64.ext4"
+test -s "$tools"
 install -m 0755 "$target/release/aenv" /usr/local/bin/aenv.taskenv
 mv /usr/local/bin/aenv.taskenv /usr/local/bin/aenv
+install -m 0755 "$target/release/server" /usr/local/bin/server.taskenv
+mv /usr/local/bin/server.taskenv /usr/local/bin/server
 ln -sfn aenv /usr/local/bin/taskenv
 ln -sfn server /usr/local/bin/taskenv-server
-install -D -m 0644 "$repo/taskenv/artifacts/tools/tools.ext4" "/var/lib/aenv/deps/taskenv-tools/$version/tools.ext4"
+destination="/var/lib/aenv/deps/taskenv-tools/$version/tools.ext4"
+if [ -e "$destination" ]; then
+    cmp "$tools" "$destination"
+else
+    install -D -m 0644 "$tools" "$destination"
+fi
 TASKENV_TOOLS_VERSION="$version" python3 - <<'PY'
 from pathlib import Path
 import os,shutil,tomllib,re

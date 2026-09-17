@@ -3,3 +3,8 @@
 !init
 !pivot-init
 !Makefile
+!envd/
+!envd/**
+!deskd/
+!deskd/**
+**/__pycache__

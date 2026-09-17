@@ -30,7 +30,7 @@
 ARG BUSYBOX_IMAGE=busybox:1.37.0-musl
 ARG DEBIAN_VERSION=bookworm
 ARG GO_VERSION=1.25.9
-ARG TOOLS_VERSION=0.1.1
+ARG TOOLS_VERSION=0.1.2-taskenv.2
 
 # ---------------------------------------------------------------------------
 # Stage 1: compile envd from upstream source.
@@ -58,6 +58,12 @@ RUN set -eux; \
     git checkout --detach FETCH_HEAD
 
 WORKDIR /src/infra/packages/envd
+
+COPY envd/context_state.go envd/context_state_test.go internal/execcontext/
+COPY envd/envd-context.patch /tmp/envd-context.patch
+RUN git -C /src/infra apply --directory=packages/envd /tmp/envd-context.patch
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod go test ./internal/execcontext
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
@@ -98,6 +104,9 @@ ARG TOOLS_VERSION
 COPY --chmod=0755 init /tools-rootfs/init
 COPY --chmod=0755 pivot-init /tools-rootfs/agentenv/pivot-init
 COPY --chmod=0755 --from=envd-builder /out/envd /tools-rootfs/agentenv/envd
+COPY --chmod=0755 deskd/deskd /tools-rootfs/agentenv/deskd
+COPY --chmod=0755 deskd/session /tools-rootfs/agentenv/desktop-session
+COPY envd/*.service deskd/*.service /tools-rootfs/agentenv/systemd/
 
 RUN set -eux; \
     mkdir -p \

@@ -39,8 +39,10 @@ impl DesktopConnection {
     async fn load(transport: &Transport) -> Result<Self> {
         tokio::time::timeout(Duration::from_secs(10), async {
             let request = build_start_request(StartOpts {
-                cmd: "/usr/bin/deskd",
-                args: vec!["connect-info".to_string()],
+                // Old snapshots pin the tools release from before deskd moved
+                // onto the drive. Keep them attachable without modifying it.
+                cmd: "/bin/sh",
+                args: vec!["-c".to_string(), "if [ -x /agentenv/deskd ]; then exec /agentenv/deskd connect-info; else exec /usr/bin/deskd connect-info; fi".to_string()],
                 envs: Default::default(),
                 pty: None,
                 stdin: false,
@@ -424,8 +426,8 @@ mod tests {
                 let request = to_bytes(request.into_body(), 4096).await.unwrap();
                 let start = envd::process::StartRequest::decode(&request[5..]).unwrap();
                 let process = start.process.unwrap();
-                assert_eq!(process.cmd, "/usr/bin/deskd");
-                assert_eq!(process.args, ["connect-info"]);
+                assert_eq!(process.cmd, "/bin/sh");
+                assert_eq!(process.args, ["-c", "if [ -x /agentenv/deskd ]; then exec /agentenv/deskd connect-info; else exec /usr/bin/deskd connect-info; fi"]);
                 assert!(start.pty.is_none());
                 assert_eq!(start.stdin, Some(false));
                 let mut events = vec![process_event::Event::Data(process_event::DataEvent {

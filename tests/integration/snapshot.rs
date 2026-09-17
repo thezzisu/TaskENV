@@ -275,9 +275,7 @@ async fn built_and_derived_snapshot_can_be_launched() -> Result<()> {
     let mut sandbox =
         FirecrackerSandbox::from_snapshot(&runnable, &SandboxLaunchConfig::default())?;
     sandbox.start().await?;
-    let version_out = sandbox
-        .run_command("sh", &["-lc", "envd --version 2>&1 || envd -version 2>&1"])
-        .await?;
+    let version_out = sandbox.run_command("/agentenv/envd", &["-version"]).await?;
     assert_eq!(version_out.exit_code, 0);
     assert!(version_out.stdout.contains(
         &derived

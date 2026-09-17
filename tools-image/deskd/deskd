@@ -10,7 +10,7 @@ import sys
 import urllib.error
 import urllib.request
 
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 DISPLAY = ':1'
 PORT = 6900
 
@@ -29,7 +29,7 @@ def run(*args):
 
 def status():
     services = {name: run('systemctl', '--user', 'is-active', name).stdout.strip()
-                for name in ('deskd-display.service', 'deskd.service')}
+                for name in ('taskenv-display.service', 'taskenv-deskd.service')}
     display_ready = run('xdpyinfo').returncode == 0
     try:
         with urllib.request.urlopen(f'http://127.0.0.1:{PORT}/', timeout=3) as response:
@@ -49,7 +49,7 @@ def connect_info():
     if os.getuid() == 0:
         raise RuntimeError('connect-info must run as the desktop user')
     if not status()['ready']:
-        raise RuntimeError('desktop is not ready; run deskd check')
+        raise RuntimeError('desktop is not ready; run /agentenv/deskd check')
     try:
         auth = json.loads((Path.home()/'.config/deskd/credentials.json').read_text())
         username, password = auth['username'], auth['password']
@@ -95,7 +95,7 @@ def main():
         # This is an authenticated machine interface, never a public HTTP route.
         # Do not dump credentials into an interactive terminal by accident.
         if sys.stdout.isatty():
-            print('connect-info is for TaskENV GUI attachment; use deskd status for diagnostics', file=sys.stderr)
+            print('connect-info is for TaskENV GUI attachment; use /agentenv/deskd status for diagnostics', file=sys.stderr)
             return 1
         try:
             result = connect_info()
@@ -109,7 +109,7 @@ def main():
         return 0 if result['ready'] else 1
     else:
         # Restart the stream only. Display restarts are explicit systemd actions.
-        return subprocess.call(['systemctl', '--user', args.command, 'deskd.service'], env=environment())
+        return subprocess.call(['systemctl', '--user', args.command, 'taskenv-deskd.service'], env=environment())
     return 0
 
 

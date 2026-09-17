@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-loader=importlib.machinery.SourceFileLoader('deskd', str(Path(__file__).resolve().parents[1]/'deskd/deskd'))
+loader=importlib.machinery.SourceFileLoader('deskd', str(Path(__file__).resolve().parents[2]/'tools-image/deskd/deskd'))
 spec=importlib.util.spec_from_loader(loader.name,loader)
 deskd=importlib.util.module_from_spec(spec);loader.exec_module(deskd)
 

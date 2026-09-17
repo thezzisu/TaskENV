@@ -61,7 +61,7 @@ impl SnapshotRuntimeVersions {
 
 async fn probe_envd_version(sandbox: &impl SandboxExecutor) -> Result<String> {
     let output = sandbox
-        .run_command("sh", &["-lc", "envd --version 2>&1 || envd -version 2>&1"])
+        .run_command("/agentenv/envd", &["-version"])
         .await
         .context("run envd version probe in snapshot build sandbox")?;
 

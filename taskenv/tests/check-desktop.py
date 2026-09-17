@@ -6,7 +6,7 @@ import mss
 import pyautogui
 assert os.environ.get('DISPLAY')==':1'
 assert tuple(pyautogui.size())==(1600,900)
-assert subprocess.run(['deskd','check'],check=True).returncode==0
+assert subprocess.run(['/agentenv/deskd','check'],check=True).returncode==0
 pyautogui.hotkey('ctrl','alt','t');time.sleep(1.5)
 window=subprocess.check_output(['xdotool','getactivewindow'],text=True).strip()
 assert 'xfce4-terminal' in subprocess.check_output(['xprop','-id',window,'WM_CLASS'],text=True).lower()

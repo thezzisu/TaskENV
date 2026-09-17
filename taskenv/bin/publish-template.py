@@ -11,5 +11,5 @@ env={'HOME':'/home/ubuntu','USER':'ubuntu','SHELL':'/bin/bash','PATH':'/usr/loca
 if a.dev:env.update(NVM_DIR='/home/ubuntu/.nvm',GOPATH='/home/ubuntu/go',PATH='/home/ubuntu/.local/bin:/home/ubuntu/.nvm/versions/node/v24.21.0/bin:/home/ubuntu/.cargo/bin:/usr/local/go/bin:/home/ubuntu/go/bin:'+env['PATH'])
 if a.desktop:env.update(DISPLAY=':1',XAUTHORITY='/home/ubuntu/.Xauthority',XDG_SESSION_TYPE='x11',XDG_CURRENT_DESKTOP='XFCE',PATH=env['PATH']+':/snap/bin')
 b=call('/v3/templates',{'name':a.name,'cpuCount':16,'memoryMB':32768})
-call(f"/v2/templates/{b['templateID']}/builds/{b['buildID']}",{'fromTemplate':a.source,'steps':[{'type':'USER','args':['ubuntu']},{'type':'WORKDIR','args':['/home/ubuntu']},{'type':'ENV','args':[v for pair in env.items() for v in pair]}],'startCmd':'','readyCmd':'deskd check' if a.desktop else 'systemctl is-active envd'})
+call(f"/v2/templates/{b['templateID']}/builds/{b['buildID']}",{'fromTemplate':a.source,'steps':[{'type':'USER','args':['ubuntu']},{'type':'WORKDIR','args':['/home/ubuntu']},{'type':'ENV','args':[v for pair in env.items() for v in pair]}],'startCmd':'','readyCmd':'/agentenv/deskd check' if a.desktop else 'systemctl is-active taskenv-envd'})
 print(json.dumps(b))

@@ -8,8 +8,8 @@ node --version
 rustc --version
 go version
 uv --version
-deskd check
-sudo systemctl is-active envd docker containerd
+/agentenv/deskd check
+sudo systemctl is-active taskenv-envd docker containerd
 if systemctl is-active --quiet taskenv-nested-test; then echo 'nested VM survived capture unexpectedly'; exit 1; fi
 /usr/local/bin/kvm-smoke
 echo TASKENV_RESTORED_RUNTIME_PASS

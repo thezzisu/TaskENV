@@ -92,8 +92,7 @@ fi
 
 # ---- Guest-visible integration points ----
 
-# Expose envd as a stable guest command.
-$BB ln -sf /agentenv/envd /usr/local/bin/envd
+# Agents remain in /agentenv; never replace or shadow rootfs commands.
 
 # envd wraps guest processes in `/usr/bin/ionice ... /usr/bin/nice ...`. Minimal
 # user images (Alpine/musl, distroless, FROM scratch) do not always ship
@@ -141,9 +140,15 @@ exec /agentenv/bin/busybox svlogd -tt /var/log/agentenv/envd
 RUNSV_EOF
 $BB chmod 0755 /run/sv/envd/log/run
 
-/agentenv/bin/busybox runsv /run/sv/envd \
-    >/var/log/agentenv/envd-sv.log \
-    2>&1 &
+# TaskENV systemd images enable the unit shipped on this same tools drive.
+# Other rootfs images retain upstream's runsv supervision.
+if [ -f /etc/systemd/system/multi-user.target.wants/taskenv-envd.service ]; then
+    echo "TaskENV: delegating /agentenv/envd to systemd"
+else
+    /agentenv/bin/busybox runsv /run/sv/envd \
+        >/var/log/agentenv/envd-sv.log \
+        2>&1 &
+fi
 
 USER_INIT_PATH=""
 for candidate in /init /sbin/init /bin/init /bin/sh; do

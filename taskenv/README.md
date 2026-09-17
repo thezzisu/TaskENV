@@ -1,12 +1,12 @@
 # TaskENV
 
-TaskENV is a soft fork of [AgentENV](https://github.com/kvcache-ai/AgentENV) for everyday tasks. Release 0.1.0 adds an Ubuntu 24.04 systemd foundation and an independent desktop package. Credential borrowing is deferred.
+TaskENV is a soft fork of [AgentENV](https://github.com/kvcache-ai/AgentENV) for everyday tasks. Release 0.1.0 adds an Ubuntu 24.04 systemd foundation and an independent desktop agent. Credential borrowing is deferred.
 
 ## Compatibility and upstream updates
 
 The Rust packages, API, configuration keys (`AENV_*`), state paths (`/var/lib/aenv`), service account, and existing `aenv` command remain compatible. `taskenv` is another entry point to the same CLI, with TaskENV help branding. `taskenv.service` names the same service as `aenv.service`, not a second server. Host networking and storage remain unchanged.
 
-Original upstream code is retained. Distribution recipes, deskd, units and deployment scripts live under `taskenv/`. `origin` is `thezzisu/TaskENV`; `upstream` is `kvcache-ai/AgentENV` with its push URL disabled. Use a review branch for upstream updates:
+The upstream tools-drive lifecycle is retained. Agent sources and units live in `tools-image/`; distribution recipes and deployment scripts live under `taskenv/`. `origin` is `thezzisu/TaskENV`; `upstream` is `kvcache-ai/AgentENV` with its push URL disabled. Use a review branch for upstream updates:
 
 ```bash
 git fetch upstream
@@ -14,7 +14,7 @@ git switch -c merge/agentenv-YYYY-MM-DD
 git merge upstream/main
 ```
 
-The envd integration is applied only to a temporary tools-image build context. It asserts the expected upstream bootstrap block before replacing it, so an upstream change fails the build rather than silently producing a bad init. Tools releases are immutable and snapshots retain their recorded tools version.
+Both agents are built by the upstream `tools-image/Makefile` and injected by its existing `/dev/vda` → `/agentenv` bind mount. The only bootstrap changes remove the command alias that could overwrite stock binaries and defer to systemd when the bundled envd unit is enabled. Other images retain upstream runsv. Tools releases are immutable and snapshots retain their recorded tools version.
 
 ## Template family
 
@@ -31,18 +31,20 @@ Two recipes share one OS foundation. Desktop packages never get installed automa
 
 ## envd and deskd
 
-`envd` remains the process, terminal and filesystem agent. TaskENV bases run `/usr/lib/taskenv/envd`; `/agentenv/envd` remains the upstream tools-drive fallback. TaskENV's tools drive pins upstream source `e2b-dev/infra@2026.17` (envd 0.5.15) and hands supervision to the packaged `envd.service` on opted-in Ubuntu bases. The separate `taskenv-envd` package contains the upstream binary with a small execution-context persistence patch. The patch preserves default user, workdir and environment across daemon restarts in a root-only `/run` file; it never serializes the envd API access token. Generic images retain the upstream runsv fallback. There is only one envd supervisor per guest.
+Both agents and their service units come from one versioned tools drive:
 
-`deskd` is an independently versioned Debian package. It provides:
+| Component | Guest path | Supervision |
+| --- | --- | --- |
+| envd | `/agentenv/envd` | `taskenv-envd.service` (system manager) |
+| deskd | `/agentenv/deskd` | `taskenv-deskd.service` (user manager) |
+| Desktop session | `/agentenv/desktop-session` | `taskenv-display.service` (user manager) |
+| All units | `/agentenv/systemd/` | Standard systemd enablement links |
 
-- `deskd-display.service`: persistent Xvfb + Xfce under the systemd user manager;
-- `deskd.service`: Selkies streaming, clipboard and file transfer, launched by `deskd serve`;
-- `deskd status` / `deskd check`: JSON capability and readiness reporting;
-- `deskd connect-info`: versioned desktop endpoint/authentication for the CLI, transported through envd's existing process API;
-- `deskd start|stop|restart`: service-manager controls for the stream;
-- `/usr/share/taskenv/desktop.json`: installed capability/version declaration.
+The rootfs contains OS/GUI dependencies and service enablement links, with no separate envd/deskd packages or duplicate agent binaries. No agent command is installed into `/usr/bin` or `/usr/local/bin`. Headless templates carry the same small tools drive but do not enable the desktop units or install their dependencies.
 
-It reuses Selkies and systemd rather than implementing a remote-display protocol or process supervisor. Stopping/restarting deskd leaves the display intact. `systemctl --user restart deskd-display` explicitly restarts the graphical session and may close applications. A GUI failure does not stop envd.
+`envd` is compiled from `e2b-dev/infra@2026.17` (0.5.15). Its small, explicit execution-context persistence patch preserves user/workdir/environment across systemd restarts in a root-only `/run` file. It contains no desktop logic and never serializes the envd API access token. The patch is applied and tested in the regular tools-image build; there is no generated Dockerfile or bootstrap rewrite.
+
+`/agentenv/deskd status|check` reports readiness; `connect-info` supplies the private versioned endpoint/authentication response. `start|stop|restart` controls the stream through systemd. Stopping the stream leaves the display available to agents. `systemctl --user restart taskenv-display` explicitly restarts the graphical session and may close applications. GUI failure does not stop envd.
 
 ```bash
 taskenv start taskenv-ubuntu-24-04-dev-desktop --timeout 14400 -d
@@ -51,7 +53,7 @@ taskenv connect <sandbox-id> --gui
 
 The CLI opens a random loopback port for the duration of the connection. Ctrl-C removes it. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
 
-`taskenv connect --gui` handles the desktop login automatically. It invokes `deskd connect-info` through envd's existing authenticated `Process.Start` interface. deskd owns its readiness, endpoint and authentication; the CLI does not read or know its credential-file format or path. No password entry or local credential file is needed. The connection response remains in CLI memory and is not printed or placed in the browser URL. An alternate `--gui-port` retains the application's own login, without receiving deskd credentials.
+`taskenv connect --gui` handles the desktop login automatically. It invokes `/agentenv/deskd connect-info` through envd's existing authenticated `Process.Start` interface. deskd owns its readiness, endpoint and authentication; the CLI does not read or know its credential-file format or path. No password entry or local credential file is needed. The connection response remains in CLI memory and is not printed or placed in the browser URL. An alternate `--gui-port` retains the application's own login, without receiving deskd credentials.
 
 The guest credential file remains mode 0600 and is used by deskd's own authentication. A template captures these credentials, so clones share them until rotated; TaskENV's existing sandbox access controls also apply. Credential borrowing and per-fork grants remain deferred.
 
@@ -60,7 +62,7 @@ The version 1 connection response contains `version`, `port` and `authentication
 unauthenticated HTTP endpoint. It refuses terminal output, an unready desktop or
 unavailable credentials. The CLI requires a successful exit and rejects unknown
 protocol versions/authentication schemes without printing the response. Existing
-desktops need deskd 0.1.1 or newer. The independent envd restart-context fix has no
+desktops need deskd 0.1.1 or newer. A fixed command selector also supports the old `/usr/bin/deskd` path in snapshots that pin the previous tools release; it receives no user-supplied shell text. The independent envd restart-context fix has no
 GUI logic; neither upstream envd APIs nor protobufs change for desktop attachment.
 
 ## Unattended desktop
@@ -82,15 +84,14 @@ Native file drag-and-drop/upload/download are provided by Selkies in `~/Shared`.
 Run Rust builds/tests as the normal user. Docker image builds use the Docker daemon; guest provisioning scripts run from an interactive `ubuntu` shell in tmux.
 
 ```bash
-cargo build --release -p aenv
-python3 taskenv/deskd/build.py  # requires dpkg-deb: dpkg package on Ubuntu/Fedora
-sudo bash taskenv/tools/build.sh
-sudo bash taskenv/guest/build-envd.sh
-python3 taskenv/guest/package-envd.py
+cargo build --release -p agentenv --bin server -p aenv --bin aenv
+make -C tools-image TOOLS_VERSION=0.1.2-taskenv.2
 bash taskenv/templates/fetch-desktop.sh
 sudo bash taskenv/bin/install-host.sh
 ```
 
 The host deployment script is for the existing installation at `/var/lib/aenv`. It backs up configuration, imports the new versioned tools drive, adds compatibility entry points, and restarts the one existing server. It does not migrate or delete state.
 
-`taskenv/templates/Dockerfile.base` builds the headless rootfs. Start it cold at the required resources, then publish via `taskenv/bin/publish-template.py`. Provision development tools with `install-dev.sh`; provision GUI with `install-desktop.sh` after placing verified `selkies.deb` and `deskd.deb` in `~/taskenv-install/`. Capture and publish the two derived families only after validation. See [the full build sequence](templates/README.md) and `DEPLOYMENT.md` for installed IDs and evidence.
+`taskenv/templates/Dockerfile.base` builds the headless rootfs. Start it cold at the required resources, then publish via `taskenv/bin/publish-template.py`. Provision development tools with `install-dev.sh`; provision GUI with `install-desktop.sh` after placing verified upstream `selkies.deb` in `~/taskenv-install/`. Capture and publish the two derived families only after validation. See [the full build sequence](templates/README.md) and `DEPLOYMENT.md` for installed IDs and evidence.
+
+Updating the default tools version only affects cold starts. To migrate an existing template, export its prepared rootfs with upstream `aenv-snapshot-image`, cold-start that OCI image with the new tools release, validate, then capture/publish it through the normal template API. Never replace a tools image in place or edit a snapshot's pinned version. Older tools releases remain available for existing sandboxes.
