@@ -530,7 +530,11 @@ where
                     snapshot,
                     launch_config,
                     transitional_metadata,
-                    NewTimeout::Set(timeout.unwrap_or(self.default_sandbox_timeout)),
+                    match timeout {
+                        Some(timeout) if timeout.is_zero() => NewTimeout::None,
+                        Some(timeout) => NewTimeout::Set(timeout),
+                        None => NewTimeout::Set(self.default_sandbox_timeout),
+                    },
                 ))
                 .await
             }
@@ -595,7 +599,11 @@ where
                     build_spec,
                     launch_config,
                     transitional_metadata,
-                    NewTimeout::Set(timeout.unwrap_or(self.default_sandbox_timeout)),
+                    match timeout {
+                        Some(timeout) if timeout.is_zero() => NewTimeout::None,
+                        Some(timeout) => NewTimeout::Set(timeout),
+                        None => NewTimeout::Set(self.default_sandbox_timeout),
+                    },
                 ))
                 .await
             }
@@ -978,6 +986,7 @@ where
         } else {
             debug!(?timeout, "updating keep-alive timeout");
         }
+        let clear_timeout = timeout.is_some_and(|value| value.is_zero());
         let valid_timeout = timeout.unwrap_or(self.default_sandbox_timeout);
 
         let mut metadata = match self.store.get(&sandbox_id).await? {
@@ -1011,6 +1020,12 @@ where
         let update_result = self
             .store
             .update_if_state(&sandbox_id, &[SandboxState::Running], |metadata| {
+                if clear_timeout {
+                    metadata.set_timeout(None);
+                    timeout_updated = true;
+                    return;
+                }
+
                 let new_expire_time = SystemTime::now().checked_add(valid_timeout);
                 if !allow_shorter {
                     if let Some(current_expire) = metadata.expires_at {

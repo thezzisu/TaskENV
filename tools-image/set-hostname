@@ -20,10 +20,9 @@ fi
 # Preserve that cookie under the stable hostname so X clients remain
 # authenticated after a resume.
 if [ -f /home/ubuntu/.Xauthority ] && command -v xauth >/dev/null 2>&1; then
-    cookie="$(xauth -f /home/ubuntu/.Xauthority list 2>/dev/null || true)"
-    if [ -n "$cookie" ]; then
-        printf '%s\n' "$cookie" \
-            | $BB sed 's/^[^ ]*/taskenv\/unix:1/' \
-            | xauth -f /home/ubuntu/.Xauthority nmerge - 2>/dev/null || true
+    entry="$(xauth -f /home/ubuntu/.Xauthority list 2>/dev/null | $BB head -n 1 || true)"
+    set -- $entry
+    if [ "$#" -ge 3 ] && [ -n "$3" ]; then
+        xauth -f /home/ubuntu/.Xauthority add taskenv/unix:1 MIT-MAGIC-COOKIE-1 "$3" 2>/dev/null || true
     fi
 fi

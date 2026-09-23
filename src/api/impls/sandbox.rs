@@ -500,6 +500,16 @@ fn duration_from_secs(secs: Option<u32>) -> Option<Duration> {
     secs.map(|s| Duration::from_secs(s as u64))
 }
 
+/// `timeout: 0` explicitly disables expiration. Omitting the field retains
+/// the configured server default for backwards compatibility.
+fn new_timeout_from_secs(secs: Option<u32>) -> NewTimeout {
+    match secs {
+        Some(0) => NewTimeout::None,
+        Some(secs) => NewTimeout::Set(Duration::from_secs(secs as u64)),
+        None => NewTimeout::Set(default_sandbox_timeout()),
+    }
+}
+
 fn cold_start_resources(body: &models::NewColdSandbox) -> Result<SandboxResources, models::Error> {
     let config = ConfigManager::global_config();
     let default_cpu = config.machine.vcpu_count;
@@ -1719,14 +1729,12 @@ impl Sandboxes<()> for ApiImpl {
                 sandbox_not_found(path_id),
             ));
         };
-        let timeout = duration_from_secs(body.timeout).unwrap_or(default_sandbox_timeout());
-
         let timer = SandboxStageTimer::new("resume");
         match timer
             .time(
                 "resume",
                 self.orchestrator
-                    .resume_sandbox(sandbox_id, NewTimeout::Set(timeout)),
+                    .resume_sandbox(sandbox_id, new_timeout_from_secs(body.timeout)),
             )
             .await
         {
@@ -1955,6 +1963,15 @@ mod tests {
     fn parse_metadata_filter_with_multiple_pairs() {
         let result = parse_metadata_filter(&Some("a=1&b=2".to_string()));
         assert_eq!(result.map(|m| m.len()), Some(2));
+    }
+
+    #[test]
+    fn zero_timeout_means_no_expiration() {
+        assert_eq!(new_timeout_from_secs(Some(0)), NewTimeout::None);
+        assert!(matches!(
+            new_timeout_from_secs(Some(300)),
+            NewTimeout::Set(timeout) if timeout == Duration::from_secs(300)
+        ));
     }
 
     #[test]
