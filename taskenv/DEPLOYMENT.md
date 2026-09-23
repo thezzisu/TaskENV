@@ -40,8 +40,10 @@ Tools SHA256:
 ## Templates
 
 All four use Ubuntu 24.04, full systemd, `ubuntu` with passwordless sudo,
-16 vCPU, 32768 MiB RAM and 131072 MiB disk. They are rebuilt from the clean,
-agent-free rootfs and use the new tools release.
+16 vCPU, 32768 MiB RAM and 131072 MiB disk. The host default and cold starts
+use tools release `0.1.2-taskenv.3`. Existing published template snapshots
+retain their immutable `0.1.2-taskenv.2` tools pin; the post-ready lifecycle
+step applies the hostname fix to those snapshots as well.
 
 | Template | ID |
 | --- | --- |

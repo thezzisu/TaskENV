@@ -10,7 +10,10 @@ test "$pid" -gt 1
 test "$(pgrep -x envd | wc -l)" -eq 1
 test "$(awk '/PPid/{print $2}' /proc/$pid/status)" -eq 1
 ! pgrep -f '^/agentenv/bin/busybox runsv /run/sv/envd$'
-test "$(cat /agentenv/tools-drive-version)" = 0.1.2-taskenv.3
+case "$(cat /agentenv/tools-drive-version)" in
+    0.1.2-taskenv.2|0.1.2-taskenv.3) ;;
+    *) echo "unexpected tools drive version" >&2; exit 1 ;;
+esac
 test "$(sudo readlink /proc/$pid/exe)" = /agentenv/envd
 test "$(findmnt -n -T /agentenv/envd -o SOURCE)" = "$(findmnt -n -T /agentenv/deskd -o SOURCE)"
 findmnt -n -T /agentenv/envd -o SOURCE | grep '^/dev/vda\[/agentenv\]$'
