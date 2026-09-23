@@ -15,3 +15,15 @@ $BB hostname taskenv
 if ! $BB grep -qxF '127.0.1.1 taskenv' /etc/hosts 2>/dev/null; then
     printf '\n127.0.1.1 taskenv\n' >> /etc/hosts
 fi
+
+# Older desktop snapshots created the Xvfb cookie before the hostname fix.
+# Preserve that cookie under the stable hostname so X clients remain
+# authenticated after a resume.
+if [ -f /home/ubuntu/.Xauthority ] && command -v xauth >/dev/null 2>&1; then
+    cookie="$(xauth -f /home/ubuntu/.Xauthority list 2>/dev/null || true)"
+    if [ -n "$cookie" ]; then
+        printf '%s\n' "$cookie" \
+            | $BB sed 's/^[^ ]*/taskenv\/unix:1/' \
+            | xauth -f /home/ubuntu/.Xauthority nmerge - 2>/dev/null || true
+    fi
+fi
