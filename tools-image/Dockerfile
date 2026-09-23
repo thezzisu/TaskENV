@@ -30,7 +30,7 @@
 ARG BUSYBOX_IMAGE=busybox:1.37.0-musl
 ARG DEBIAN_VERSION=bookworm
 ARG GO_VERSION=1.25.9
-ARG TOOLS_VERSION=0.1.2-taskenv.2
+ARG TOOLS_VERSION=0.1.2-taskenv.3
 
 # ---------------------------------------------------------------------------
 # Stage 1: compile envd from upstream source.
@@ -103,6 +103,7 @@ ARG TOOLS_VERSION
 
 COPY --chmod=0755 init /tools-rootfs/init
 COPY --chmod=0755 pivot-init /tools-rootfs/agentenv/pivot-init
+COPY --chmod=0755 set-hostname /tools-rootfs/agentenv/set-hostname
 COPY --chmod=0755 --from=envd-builder /out/envd /tools-rootfs/agentenv/envd
 COPY --chmod=0755 deskd/deskd /tools-rootfs/agentenv/deskd
 COPY --chmod=0755 deskd/session /tools-rootfs/agentenv/desktop-session
@@ -127,7 +128,9 @@ RUN set -eux; \
     /tools-rootfs/agentenv/bin/busybox --list | grep -qx 'nice' || \
       { echo "BusyBox nice applet missing; rebuild with CONFIG_NICE=y" >&2; exit 1; }; \
     /tools-rootfs/agentenv/bin/busybox --list | grep -qx 'ionice' || \
-      { echo "BusyBox ionice applet missing; rebuild with CONFIG_IONICE=y" >&2; exit 1; }
+      { echo "BusyBox ionice applet missing; rebuild with CONFIG_IONICE=y" >&2; exit 1; }; \
+    /tools-rootfs/agentenv/bin/busybox --list | grep -qx 'hostname' || \
+      { echo "BusyBox hostname applet missing; rebuild with CONFIG_HOSTNAME=y" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Stage 3: materialize the rootfs as an ext4 disk image.

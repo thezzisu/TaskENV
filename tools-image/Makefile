@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := build
 
 REPO_ROOT := ..
-TOOLS_VERSION ?= 0.1.2-taskenv.2
+TOOLS_VERSION ?= 0.1.2-taskenv.3
 ENVD_REF ?= 2026.17
 ENVD_UPSTREAM_REPO ?= https://github.com/e2b-dev/infra.git
 HOST_MACHINE := $(shell uname -m)

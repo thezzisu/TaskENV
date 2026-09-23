@@ -1,13 +1,16 @@
 #!/bin/bash
 set -euo pipefail
 test "$(cat /proc/1/comm)" = systemd
+test "$(hostname)" = taskenv
+test "$(cat /etc/hostname)" = taskenv
+getent ahostsv4 taskenv | grep '^127\.0\.1\.1 '
 sudo systemctl is-active taskenv-envd dbus systemd-udevd user@1000.service
 pid=$(systemctl show taskenv-envd --property=MainPID --value)
 test "$pid" -gt 1
 test "$(pgrep -x envd | wc -l)" -eq 1
 test "$(awk '/PPid/{print $2}' /proc/$pid/status)" -eq 1
 ! pgrep -f '^/agentenv/bin/busybox runsv /run/sv/envd$'
-test "$(cat /agentenv/tools-drive-version)" = 0.1.2-taskenv.2
+test "$(cat /agentenv/tools-drive-version)" = 0.1.2-taskenv.3
 test "$(sudo readlink /proc/$pid/exe)" = /agentenv/envd
 test "$(findmnt -n -T /agentenv/envd -o SOURCE)" = "$(findmnt -n -T /agentenv/deskd -o SOURCE)"
 findmnt -n -T /agentenv/envd -o SOURCE | grep '^/dev/vda\[/agentenv\]$'

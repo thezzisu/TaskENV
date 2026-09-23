@@ -1,0 +1,17 @@
+#!/agentenv/bin/busybox sh
+# Used at boot and by the host after restoring older snapshots.
+set -eu
+BB=/agentenv/bin/busybox
+
+$BB mkdir -p /etc
+if [ -L /etc/hostname ] || [ "$($BB cat /etc/hostname 2>/dev/null)" != taskenv ]; then
+    $BB rm -f /etc/hostname
+    printf '%s\n' taskenv > /etc/hostname
+    $BB chmod 0644 /etc/hostname
+fi
+$BB hostname taskenv
+
+# Resolve the guest's own name locally, including images without nss-myhostname.
+if ! $BB grep -qxF '127.0.1.1 taskenv' /etc/hosts 2>/dev/null; then
+    printf '\n127.0.1.1 taskenv\n' >> /etc/hosts
+fi

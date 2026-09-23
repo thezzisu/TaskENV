@@ -4,7 +4,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 target=${CARGO_TARGET_DIR:-$repo/target}
 test "$(id -u)" = 0
-version=0.1.2-taskenv.2
+version=0.1.2-taskenv.3
 tools="$repo/tools-image/out/tools-$version-amd64.ext4"
 test -s "$tools"
 install -m 0755 "$target/release/aenv" /usr/local/bin/aenv.taskenv

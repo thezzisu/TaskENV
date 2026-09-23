@@ -874,6 +874,9 @@ impl FirecrackerSandbox {
             )
             .await?;
 
+        // Memory restore skips pivot-init, including when using older tools.
+        Self::set_guest_hostname(envd_instance.clone()).await?;
+
         // The snapshot already carries mount state for its existing drives.
         // Only drives newly supplied for this launch need a guest-side mount.
         if !self.initial_guest_drive_mounts.is_empty() {
@@ -884,6 +887,35 @@ impl FirecrackerSandbox {
             Self::mount_initial_guest_drives(envd, self.initial_guest_drive_mounts.clone()).await?;
         }
 
+        Ok(())
+    }
+
+    async fn set_guest_hostname(envd: EnvdInstance) -> Result<()> {
+        let output = tokio::time::timeout(std::time::Duration::from_secs(15), async move {
+            Executor::new(envd)
+                .with_root_user()
+                .run_command_with_opts(
+                    "/agentenv/bin/busybox",
+                    &[
+                        "sh",
+                        "-c",
+                        include_str!("../../../tools-image/set-hostname"),
+                    ],
+                    &crate::sandbox::ProcessOpts::default()
+                        .with_cwd("/")
+                        .with_timeout(std::time::Duration::from_secs(10)),
+                )
+                .await
+        })
+        .await
+        .context("setting guest hostname timed out")?
+        .context("set guest hostname to taskenv")?;
+        anyhow::ensure!(
+            output.exit_code == 0,
+            "setting guest hostname to taskenv failed (exit {}): {}",
+            output.exit_code,
+            output.stderr.trim()
+        );
         Ok(())
     }
 

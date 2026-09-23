@@ -86,7 +86,7 @@ The build accepts these Make variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TOOLS_VERSION` | `0.1.2-taskenv.2` | Immutable SemVer release of the complete tools drive |
+| `TOOLS_VERSION` | `0.1.2-taskenv.3` | Immutable SemVer release of the complete tools drive |
 | `ENVD_REF` | `2026.17` | Tag, branch, or fetchable commit to build from the envd upstream repository |
 | `ENVD_UPSTREAM_REPO` | `https://github.com/e2b-dev/infra.git` | Repository containing `packages/envd` |
 | `ARCH` | host architecture, normalized to `amd64` or `arm64` | Target architecture |
@@ -163,6 +163,12 @@ arbitrary images without it retain upstream runsv. Desktop images additionally
 enable `taskenv-display.service` and `taskenv-deskd.service` in the desktop user's
 manager. All executable agent code and units remain on the same tools drive.
 Selkies, Xfce, Python and browser packages belong to the desktop rootfs.
+
+`pivot-init` fixes every guest hostname to `taskenv` before starting the user
+init. The host lifecycle repeats the same operation after envd initialization,
+which also covers older tools drives and paused/resumed snapshots. Both the
+kernel hostname and `/etc/hostname` are updated because Ubuntu systemd can
+otherwise restore the rootfs file during boot.
 
 The envd execution-context patch in `envd/` is compiled and unit-tested here.
 Desktop sources live in `deskd/`. There are no separate agent Debian packages,

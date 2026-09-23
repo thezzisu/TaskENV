@@ -6,7 +6,7 @@ Updated 2026-09-17. TaskENV 0.1.0 retains the AgentENV API, state store,
 
 ## Agent installation
 
-Tools release **0.1.2-taskenv.2** contains both agents:
+Tools release **0.1.2-taskenv.3** contains both agents:
 
 | Component | Location | Supervisor |
 | --- | --- | --- |
@@ -22,6 +22,13 @@ rootfs. The mount is read-only. No separate agent Debian packages, duplicate
 rootfs binaries, forced command aliases, or alternate drive injector remain in
 the new templates. Headless templates leave desktop services disabled and omit
 GUI dependencies. Arbitrary images retain upstream runsv supervision for envd.
+
+Every guest is named `taskenv`. The upstream network `ip=` boot field carries
+that hostname, `pivot-init` writes `/etc/hostname` and sets the kernel UTS
+hostname before the user init starts, and the host lifecycle applies the same
+fix after envd initialization. The lifecycle step covers old tools drives,
+paused/resumed snapshots, and arbitrary images whose distribution init would
+otherwise restore `localhost.localdomain`.
 
 The envd source is `e2b-dev/infra@2026.17` (commit `9c3b7c5`). Its existing,
 independent execution-context patch preserves user/workdir/environment after

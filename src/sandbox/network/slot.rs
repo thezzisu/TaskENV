@@ -448,7 +448,7 @@ impl Slot {
     pub(crate) fn build_ip_boot_arg(&self) -> String {
         let dns_ip = self.guest_dns_server();
         format!(
-            "ip={}::{}:{}:instance:eth0:off:{}",
+            "ip={}::{}:{}:taskenv:eth0:off:{}",
             self.address_plan.vm_ip(),
             self.address_plan.tap_ip(),
             self.address_plan.vm_link_mask(),
@@ -1024,9 +1024,10 @@ mod tests {
         assert_eq!(slot.host_interaction_ip.to_string(), "100.64.0.2");
         assert_eq!(slot.veth_host_ip.to_string(), "100.65.0.4");
         assert_eq!(slot.veth_vm_ip.to_string(), "100.65.0.5");
-        assert!(slot
-            .build_ip_boot_arg()
-            .starts_with("ip=169.254.0.21::169.254.0.22:255.255.255.252:"));
+        assert_eq!(
+            slot.build_ip_boot_arg(),
+            "ip=169.254.0.21::169.254.0.22:255.255.255.252:taskenv:eth0:off:169.254.0.22"
+        );
     }
 
     #[test]

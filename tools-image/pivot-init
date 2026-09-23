@@ -90,6 +90,9 @@ if [ ! -s /etc/hosts ]; then
     } > /etc/hosts
 fi
 
+# Set both the kernel hostname and the file distro init reads before envd starts.
+/agentenv/set-hostname || die "set guest hostname"
+
 # ---- Guest-visible integration points ----
 
 # Agents remain in /agentenv; never replace or shadow rootfs commands.

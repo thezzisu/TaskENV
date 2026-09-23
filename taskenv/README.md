@@ -85,7 +85,7 @@ Run Rust builds/tests as the normal user. Docker image builds use the Docker dae
 
 ```bash
 cargo build --release -p agentenv --bin server -p aenv --bin aenv
-make -C tools-image TOOLS_VERSION=0.1.2-taskenv.2
+make -C tools-image TOOLS_VERSION=0.1.2-taskenv.3
 bash taskenv/templates/fetch-desktop.sh
 sudo bash taskenv/bin/install-host.sh
 ```

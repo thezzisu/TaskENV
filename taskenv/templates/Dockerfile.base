@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && usermod -aG sudo ubuntu \
     && printf '%s\n' 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu \
     && chmod 0440 /etc/sudoers.d/ubuntu \
+    && printf '%s\n' taskenv > /etc/hostname \
     && mkdir -p /var/lib/systemd/linger /etc/systemd/system/multi-user.target.wants \
     && touch /var/lib/systemd/linger/ubuntu \
     && groupadd -f kvm && usermod -aG kvm ubuntu \
