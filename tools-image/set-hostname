@@ -25,4 +25,5 @@ if [ -f /home/ubuntu/.Xauthority ] && command -v xauth >/dev/null 2>&1; then
     if [ "$#" -ge 3 ] && [ -n "$3" ]; then
         xauth -f /home/ubuntu/.Xauthority add taskenv/unix:1 MIT-MAGIC-COOKIE-1 "$3" 2>/dev/null || true
     fi
+    $BB chown ubuntu:ubuntu /home/ubuntu/.Xauthority 2>/dev/null || true
 fi
