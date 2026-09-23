@@ -1,6 +1,6 @@
 # Local TaskENV deployment
 
-Updated 2026-09-17. TaskENV 0.1.0 retains the AgentENV API, state store,
+Updated 2026-09-24. TaskENV 0.1.0 retains the AgentENV API, state store,
 `aenv` entry point and configuration names. One server runs through the
 `taskenv.service` / `aenv.service` aliases.
 
@@ -51,6 +51,27 @@ step applies the hostname fix to those snapshots as well.
 | `taskenv-ubuntu-24-04-dev` | `01a0ad59-b473-7ff2-8f91-f7497a456719` |
 | `taskenv-ubuntu-24-04-desktop` | `01a0ad59-c082-70d3-92f6-5695f65a9757` |
 | `taskenv-ubuntu-24-04-dev-desktop` | `01a0ad59-cc90-79b1-bf15-ba0e48909304` |
+
+## Permanent GUI instances
+
+These three instances are long-lived (`timeout` and `expiresAt` are `null`) and
+are resumed by the enabled `taskenv-gui-instances.service` unit at host boot:
+
+| Instance | Sandbox ID | EasyTier network |
+| --- | --- | --- |
+| `zzs_cclab` | `01a0cf25-ddab-7d22-bc4d-7e7059b46bae` | `cclab_pku` (DHCP) |
+| `zzs_ccops` | `01a0cf25-df65-7e32-8788-53a17482b77a` | `ccops_pku` (DHCP) |
+| `ytj_ccops` | `01a0cf25-dfd5-7eb1-bcdb-b1101016e790` | `ccops_pku` (DHCP) |
+
+Each guest has `sshd` enabled and uses an independent EasyTier secure-mode key
+generated inside that guest. The host-side boot hook is installed with:
+
+```bash
+sudo bash taskenv/bin/install-gui-instances.sh
+```
+
+The hook explicitly applies `timeout: 0` after each resume, so a stale client
+cannot leave one of these instances with a short expiration.
 
 Development tools: nvm 0.40.3, Node 24.21.0, Rust 1.98.1, Go 1.27.1, uv 0.12.14,
 Git, Docker 29.8.1, Compose 5.5.1 and Buildx 0.37.1. GUI dependencies include

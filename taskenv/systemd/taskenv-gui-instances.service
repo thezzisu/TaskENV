@@ -1,0 +1,13 @@
+[Unit]
+Description=Resume long-lived TaskENV GUI instances
+After=taskenv.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=thezzisu
+ExecStart=/usr/local/sbin/taskenv-gui-instances-resume
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

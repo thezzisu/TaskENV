@@ -993,6 +993,7 @@ where
             Some(metadata) => metadata,
             None => return Err(OrchestratorError::SandboxNotFound(sandbox_id)),
         };
+        let preserve_no_expiry = timeout.is_none() && metadata.timeout.is_none();
 
         // If the sandbox is in a transitional state that may lead to Running,
         // wait for the transition to complete before checking whether the
@@ -1020,7 +1021,7 @@ where
         let update_result = self
             .store
             .update_if_state(&sandbox_id, &[SandboxState::Running], |metadata| {
-                if clear_timeout {
+                if clear_timeout || preserve_no_expiry {
                     metadata.set_timeout(None);
                     timeout_updated = true;
                     return;

@@ -116,7 +116,9 @@ pub(super) async fn attach(
     port: u16,
     open: bool,
 ) -> Result<()> {
-    let sandbox = client.connect_sandbox(&sandbox_id, super::DEFAULT_TIMEOUT_SECS)?;
+    // Zero is the API's explicit no-expiration value. GUI attachment must not
+    // turn a long-lived sandbox back into a short-lived one.
+    let sandbox = client.connect_sandbox(&sandbox_id, 0)?;
     // deskd owns its endpoint and authentication. envd is only the existing
     // authenticated command transport, with no desktop-specific API or paths.
     let connection = if port == DESKD_PORT {
@@ -155,7 +157,10 @@ pub(super) async fn attach(
             let client = client.clone();
             let sandbox_id = sandbox_id.clone();
             let result = tokio::task::spawn_blocking(move || {
-                client.refresh_sandbox(&sandbox_id, Some(super::DEFAULT_TIMEOUT_SECS))
+                // GUI attachment is explicitly no-expiration. Reassert that
+                // state so a long-lived sandbox cannot be paused by a stale
+                // or older client while the forward is open.
+                client.refresh_sandbox(&sandbox_id, Some(0))
             })
             .await?;
             if let Err(error) = result {

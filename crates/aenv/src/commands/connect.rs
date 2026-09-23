@@ -847,7 +847,7 @@ fn should_refresh_session_keepalive(state: &SessionState, last_activity: &mut u6
 
 async fn refresh_session_keepalive(client: Client, sandbox_id: String) {
     let keepalive = tokio::task::spawn_blocking(move || {
-        let _ = client.refresh_sandbox(&sandbox_id, Some(DEFAULT_TIMEOUT_SECS));
+        let _ = client.refresh_sandbox(&sandbox_id, None);
     });
     let _ = tokio::time::timeout(SESSION_KEEPALIVE_TIMEOUT, keepalive).await;
 }

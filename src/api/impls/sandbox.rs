@@ -1137,10 +1137,7 @@ impl Sandboxes<()> for ApiImpl {
         // try to resume the sandbox
         match self
             .orchestrator
-            .resume_sandbox(
-                sandbox_id,
-                NewTimeout::Set(Duration::from_secs(body.timeout as u64)),
-            )
+            .resume_sandbox(sandbox_id, new_timeout_from_secs(Some(body.timeout)))
             .await
         {
             Ok(resumed_metadata) => return Ok(
