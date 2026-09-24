@@ -36,7 +36,7 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../../searchindex-952bc4f6.js";
+            window.path_to_searchindex_js = "../../searchindex-0da95276.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc-c8205cda.js"></script>
@@ -236,15 +236,16 @@ CLI obtains and manages the access token automatically.</p>
 <p>Resumes the sandbox if paused before attaching.</p>
 <p>Use <code>--gui</code> to attach to a web desktop already running inside the sandbox:</p>
 <pre><code class="language-bash">aenv connect &lt;sandbox-id&gt; --gui
-aenv connect &lt;sandbox-id&gt; --gui --gui-port 8080 --no-open
+aenv connect &lt;sandbox-id&gt; --gui --gui-port 8080
 </code></pre>
 <p>The default guest port is <code>6900</code>. The CLI opens a temporary listener on a random
-<code>127.0.0.1</code> port, prints its URL, and opens the browser unless <code>--no-open</code> is set.
+<code>127.0.0.1</code> port and prints an OSC 8 clickable URL with a visible plain-text
+fallback. It never opens a browser.
 HTTP, file uploads/downloads, and WebSockets pass through the existing AgentENV
 data-plane proxy. For deskd on the default port 6900, the CLI invokes
 <code>deskd connect-info</code> through envd’s standard authenticated process API. deskd
 supplies its endpoint and authentication (requires deskd 0.1.1 or newer); envd
-only executes the command. The browser opens without a login prompt; the response
+only executes the command. The URL works without a login prompt; the response
 stays in CLI memory and is never printed, placed in the URL or saved locally.
 Other <code>--gui-port</code> values retain the application’s own login. No server domains,
 firewall rules, or permanent host listeners are required.</p>
