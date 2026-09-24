@@ -57,14 +57,17 @@ step applies the hostname fix to those snapshots as well.
 These three instances are long-lived (`timeout` and `expiresAt` are `null`) and
 are resumed by the enabled `taskenv-gui-instances.service` unit at host boot:
 
-| Instance | Sandbox ID | EasyTier network |
-| --- | --- | --- |
-| `zzs_cclab` | `01a0cf25-ddab-7d22-bc4d-7e7059b46bae` | `cclab_pku` (DHCP) |
-| `zzs_ccops` | `01a0cf25-df65-7e32-8788-53a17482b77a` | `ccops_pku` (DHCP) |
-| `ytj_ccops` | `01a0cf25-dfd5-7eb1-bcdb-b1101016e790` | `ccops_pku` (DHCP) |
+| Instance | Sandbox ID | Guest interface | EasyTier mesh / address |
+| --- | --- | --- | --- |
+| `zzs_cclab` | `01a0cf25-ddab-7d22-bc4d-7e7059b46bae` | `cclab_pku` | `cclab_pku` DHCP (currently `192.168.223.5`) |
+| `zzs_ccops` | `01a0cf25-df65-7e32-8788-53a17482b77a` | `ccops_pku` | `ccinfra_pku` DHCP (currently `192.168.149.2`) |
+| `ytj_ccops` | `01a0cf25-dfd5-7eb1-bcdb-b1101016e790` | `ccops_pku` | `ccinfra_pku` DHCP (currently `192.168.149.1`) |
 
 Each guest has `sshd` enabled and uses an independent EasyTier secure-mode key
-generated inside that guest. The host-side boot hook is installed with:
+generated inside that guest. The ccops interface name is `ccops_pku`, while its
+mesh identity is the existing host/PKU network `ccinfra_pku`; this is why its
+DHCP addresses belong to `192.168.149.0/24`. The host-side boot hook is
+installed with:
 
 ```bash
 sudo bash taskenv/bin/install-gui-instances.sh
