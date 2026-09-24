@@ -67,16 +67,17 @@ Use `--gui` to attach to a web desktop already running inside the sandbox:
 
 ```bash
 aenv connect <sandbox-id> --gui
-aenv connect <sandbox-id> --gui --gui-port 8080 --no-open
+aenv connect <sandbox-id> --gui --gui-port 8080
 ```
 
 The default guest port is `6900`. The CLI opens a temporary listener on a random
-`127.0.0.1` port, prints its URL, and opens the browser unless `--no-open` is set.
+`127.0.0.1` port and prints an OSC 8 clickable URL with a visible plain-text
+fallback. It never opens a browser.
 HTTP, file uploads/downloads, and WebSockets pass through the existing AgentENV
 data-plane proxy. For deskd on the default port 6900, the CLI invokes
 `deskd connect-info` through envd's standard authenticated process API. deskd
 supplies its endpoint and authentication (requires deskd 0.1.1 or newer); envd
-only executes the command. The browser opens without a login prompt; the response
+only executes the command. The URL works without a login prompt; the response
 stays in CLI memory and is never printed, placed in the URL or saved locally.
 Other `--gui-port` values retain the application's own login. No server domains,
 firewall rules, or permanent host listeners are required.

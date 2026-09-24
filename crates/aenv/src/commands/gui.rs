@@ -110,12 +110,7 @@ struct Forward {
     credentials: Option<DesktopCredentials>,
 }
 
-pub(super) async fn attach(
-    client: Client,
-    sandbox_id: String,
-    port: u16,
-    open: bool,
-) -> Result<()> {
+pub(super) async fn attach(client: Client, sandbox_id: String, port: u16) -> Result<()> {
     // Zero is the API's explicit no-expiration value. GUI attachment must not
     // turn a long-lived sandbox back into a short-lived one.
     let sandbox = client.connect_sandbox(&sandbox_id, 0)?;
@@ -143,11 +138,8 @@ pub(super) async fn attach(
     )?;
     forward.credentials = connection.map(|info| info.authentication);
     let url = format!("http://{authority}/");
-    println!("Desktop: {url}");
+    println!("Desktop: {}", clickable_link(&url));
     eprintln!("Forwarding sandbox port {port}. Ctrl-C disconnects; the desktop keeps running.");
-    if open {
-        open_browser(&url);
-    }
     let router = Router::new().fallback(proxy).with_state(Arc::new(forward));
     let keepalive = async {
         let mut tick = tokio::time::interval(Duration::from_secs(60));
@@ -338,20 +330,10 @@ fn strip_hop_headers(headers: &mut HeaderMap, websocket: bool) {
     }
 }
 
-fn open_browser(url: &str) {
-    #[cfg(target_os = "macos")]
-    let mut command = std::process::Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = std::process::Command::new("cmd");
-        command.args(["/C", "start", ""]);
-        command
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let mut command = std::process::Command::new("xdg-open");
-    if let Err(error) = command.arg(url).spawn() {
-        eprintln!("Could not open the browser ({error}); open the printed URL manually.");
-    }
+fn clickable_link(url: &str) -> String {
+    // OSC 8 is understood by modern terminals; the visible URL remains a
+    // usable fallback in terminals that ignore the escape sequence.
+    format!("\x1b]8;;{url}\x1b\\{url}\x1b]8;;\x1b\\")
 }
 
 #[cfg(test)]
@@ -514,7 +496,19 @@ mod tests {
             "--gui"
         ])
         .is_err());
-        assert!(crate::Cli::try_parse_from(["aenv", "connect", "sandbox", "--no-open"]).is_err());
+        assert!(
+            crate::Cli::try_parse_from(["aenv", "connect", "sandbox", "--gui", "--no-open"])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn prints_an_osc8_clickable_url_with_plain_text_fallback() {
+        let link = clickable_link("http://127.0.0.1:1234/");
+        assert_eq!(
+            link,
+            "\x1b]8;;http://127.0.0.1:1234/\x1b\\http://127.0.0.1:1234/\x1b]8;;\x1b\\"
+        );
     }
 
     async fn start(router: Router) -> (String, tokio::task::JoinHandle<()>) {

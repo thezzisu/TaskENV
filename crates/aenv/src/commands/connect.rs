@@ -48,9 +48,6 @@ pub struct Args {
     /// Desktop HTTP/WebSocket port inside the sandbox
     #[arg(long, default_value_t = 6900, requires = "gui", value_parser = clap::value_parser!(u16).range(1..))]
     gui_port: u16,
-    /// Print the desktop URL without opening a browser
-    #[arg(long, requires = "gui")]
-    no_open: bool,
 }
 
 pub fn run(args: Args) -> Result<()> {
@@ -58,12 +55,7 @@ pub fn run(args: Args) -> Result<()> {
     let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
     let rt = super::tokio_rt()?;
     if args.gui {
-        return rt.block_on(super::gui::attach(
-            client,
-            sandbox_id,
-            args.gui_port,
-            !args.no_open,
-        ));
+        return rt.block_on(super::gui::attach(client, sandbox_id, args.gui_port));
     }
     let code = rt.block_on(attach(&client, &sandbox_id))?;
     std::process::exit(code);

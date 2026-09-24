@@ -59,7 +59,7 @@ shows both values. `--hostname` sets the guest hostname during startup and is
 returned in sandbox metadata; a process inside the VM may change its hostname
 later, and TaskENV does not reset that change during the running session.
 
-The CLI opens a random loopback port for the duration of the connection. Ctrl-C removes it. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
+The CLI opens a random loopback port for the duration of the connection. It prints an OSC 8 clickable localhost URL with a plain-text fallback and never opens a browser. Ctrl-C removes the forward. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
 
 `taskenv connect --gui` handles the desktop login automatically. It invokes `/agentenv/deskd connect-info` through envd's existing authenticated `Process.Start` interface. deskd owns its readiness, endpoint and authentication; the CLI does not read or know its credential-file format or path. No password entry or local credential file is needed. The connection response remains in CLI memory and is not printed or placed in the browser URL. An alternate `--gui-port` retains the application's own login, without receiving deskd credentials.
 
