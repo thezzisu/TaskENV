@@ -15,6 +15,7 @@ pub(crate) enum RecordingCall {
     LoadAll,
     AllocateArtifactRoot,
     PersistPaused,
+    RenamePaused,
     MarkResuming,
     RollbackResuming,
     DeleteRecord,
@@ -27,6 +28,7 @@ impl RecordingCall {
             Self::LoadAll => "load_all",
             Self::AllocateArtifactRoot => "allocate_artifact_root",
             Self::PersistPaused => "persist_paused",
+            Self::RenamePaused => "rename_paused",
             Self::MarkResuming => "mark_resuming",
             Self::RollbackResuming => "rollback_resuming",
             Self::DeleteRecord => "delete_record",
@@ -91,6 +93,15 @@ impl RecordingPersister {
 
 #[async_trait]
 impl SandboxPersister for RecordingPersister {
+    async fn rename_paused(
+        &self,
+        _sandbox_id: &SandboxId,
+        _name: Option<&str>,
+    ) -> PersistenceResult<()> {
+        self.record(RecordingCall::RenamePaused);
+        self.maybe_fail(RecordingCall::RenamePaused)
+    }
+
     async fn load_all<F>(&self, _factory: &F) -> PersistenceResult<Vec<SandboxMetadata>>
     where
         F: crate::sandbox::SandboxBackendFactory,

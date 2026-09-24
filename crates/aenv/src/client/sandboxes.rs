@@ -166,12 +166,32 @@ impl Client {
     }
 
     pub fn list_sandboxes(&self) -> Result<Vec<ListedSandbox>> {
-        let resp = handle_status(self.get("/v2/sandboxes").call())?;
-        Ok(resp.into_json()?)
+        let mut sandboxes = Vec::new();
+        let mut next_token: Option<String> = None;
+        loop {
+            let mut request = self.get("/v2/sandboxes");
+            if let Some(token) = next_token.as_deref() {
+                request = request.query("nextToken", token);
+            }
+            let response = handle_status(request.call())?;
+            next_token = response
+                .header("x-next-token")
+                .map(str::trim)
+                .filter(|token| !token.is_empty())
+                .map(str::to_owned);
+            let mut page: Vec<ListedSandbox> = response.into_json()?;
+            sandboxes.append(&mut page);
+            if next_token.is_none() {
+                return Ok(sandboxes);
+            }
+        }
     }
 
     /// Resolve either a sandbox UUID or its unique human-readable name.
     pub fn resolve_sandbox_id(&self, reference: &str) -> Result<String> {
+        if let Ok(id) = uuid::Uuid::parse_str(reference) {
+            return Ok(id.to_string());
+        }
         let sandboxes = self.list_sandboxes()?;
         if sandboxes
             .iter()
@@ -193,6 +213,14 @@ impl Client {
 
     pub fn delete_sandbox(&self, id: &str) -> Result<()> {
         handle_status(self.delete(&format!("/sandboxes/{}", id)).call())?;
+        Ok(())
+    }
+
+    pub fn rename_sandbox(&self, id: &str, name: &str) -> Result<()> {
+        handle_status(
+            self.post(&format!("/sandboxes/{id}/rename"))
+                .send_json(json!({"name": name})),
+        )?;
         Ok(())
     }
 

@@ -21,8 +21,8 @@ pub use store::{
     SandboxTimeoutAction,
 };
 pub use types::{
-    CreateSandboxRequest, SandboxForkChildSpec, SandboxLaunchSource, SandboxLifecycleEvent,
-    SandboxLifecycleEventType, SandboxState, SnapshotCaptureResult,
+    validate_sandbox_name, CreateSandboxRequest, SandboxForkChildSpec, SandboxLaunchSource,
+    SandboxLifecycleEvent, SandboxLifecycleEventType, SandboxState, SnapshotCaptureResult,
 };
 
 pub type Result<T> = std::result::Result<T, OrchestratorError>;
@@ -85,6 +85,9 @@ pub enum OrchestratorError {
 
     #[error("sandbox name '{name}' is already in use")]
     SandboxNameConflict { name: String },
+
+    #[error("invalid sandbox name: use 1-128 ASCII letters, numbers, '.', '_' or '-', starting with a letter or number; UUIDs are reserved for IDs")]
+    InvalidSandboxName,
 
     #[error("store operation failed: {0}")]
     StoreOperationFailed(#[source] store::StoreError),

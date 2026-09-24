@@ -316,6 +316,30 @@ fn snapshot_config_for_fork(
 
 #[async_trait]
 impl SandboxBackend for FirecrackerSandbox {
+    async fn hostname(&mut self) -> Result<Option<String>> {
+        let envd = self
+            .envd_instance
+            .clone()
+            .context("Sandbox is not running")?;
+        let output = Executor::new(envd)
+            .with_root_user()
+            .run_command_with_opts(
+                "/agentenv/bin/busybox",
+                &["cat", "/proc/sys/kernel/hostname"],
+                &crate::sandbox::ProcessOpts::default()
+                    .with_cwd("/")
+                    .with_timeout(std::time::Duration::from_secs(1)),
+            )
+            .await?;
+        anyhow::ensure!(output.exit_code == 0, "cannot read guest hostname");
+        let hostname = output.stdout.trim_end_matches('\n');
+        anyhow::ensure!(
+            !hostname.is_empty() && hostname.len() <= 64 && !hostname.chars().any(char::is_control),
+            "invalid guest hostname response"
+        );
+        Ok(Some(hostname.to_owned()))
+    }
+
     async fn start(&mut self) -> Result<()> {
         FirecrackerSandbox::start(self).await
     }
@@ -718,6 +742,8 @@ impl FirecrackerSandbox {
         );
         // Runtime identity and auth override their values in the source snapshot.
         snapshot.common.envd_access_token = envd_access_token;
+        // A resumed VM (or fork) already carries its guest-managed UTS state.
+        snapshot.common.hostname = None;
         let FirecrackerCommonConfig {
             mmds_metadata,
             envd_access_token,
@@ -796,11 +822,7 @@ impl FirecrackerSandbox {
         );
         snapshot_config.common.envd_access_token = launch_config.envd_access_token.clone();
         snapshot_config.common.network_policy = launch_config.network.clone();
-        snapshot_config.common.hostname = if launch_config.hostname.is_empty() {
-            "taskenv".to_owned()
-        } else {
-            launch_config.hostname.clone()
-        };
+        snapshot_config.common.hostname = Some(launch_config.hostname.clone());
 
         // Launch-provided custom config overrides the value persisted in the
         // source snapshot; otherwise inherit the snapshot's.
@@ -879,9 +901,10 @@ impl FirecrackerSandbox {
             )
             .await?;
 
-        // Memory restore skips pivot-init, including when using older tools.
-        Self::set_guest_hostname(envd_instance.clone(), self.launch.common().hostname.clone())
-            .await?;
+        // Initialize new instances only; resume must preserve guest changes.
+        if let Some(hostname) = self.launch.common().hostname.as_ref() {
+            Self::set_guest_hostname(envd_instance.clone(), hostname.clone()).await?;
+        }
 
         // The snapshot already carries mount state for its existing drives.
         // Only drives newly supplied for this launch need a guest-side mount.

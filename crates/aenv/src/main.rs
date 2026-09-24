@@ -46,6 +46,8 @@ enum Cmd {
     Pause(commands::pause::Args),
     /// Resume a paused sandbox
     Resume(commands::resume::Args),
+    /// Rename a running or paused sandbox
+    Rename(commands::rename::Args),
     /// List sandboxes
     #[command(visible_alias = "ls")]
     List(commands::list::Args),
@@ -79,6 +81,7 @@ fn main() -> Result<()> {
         Cmd::Connect(a) => commands::connect::run(a),
         Cmd::Pause(a) => commands::pause::run(a),
         Cmd::Resume(a) => commands::resume::run(a),
+        Cmd::Rename(a) => commands::rename::run(a),
         Cmd::List(a) => commands::list::run(a),
         Cmd::Delete(a) => commands::delete::run(a),
         Cmd::Timeout(a) => commands::timeout::run(a),

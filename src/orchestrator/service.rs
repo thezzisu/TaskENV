@@ -57,6 +57,7 @@ enum DeleteProgress {
 /// never completes (e.g. the task holding the state panics without rolling back).
 const WAIT_TRANSITION_TIMEOUT: Duration = Duration::from_secs(60);
 const SANDBOX_EVENT_CHANNEL_CAPACITY: usize = 1024;
+const HOSTNAME_READ_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug)]
 enum ShutdownOutcome {
@@ -108,6 +109,8 @@ pub struct Orchestrator<
     P: SandboxPersister = FileBackedSandboxPersister,
 > {
     store: S,
+    // Serialize name allocation and paused-name persistence with resume/delete claims.
+    name_mutations: Mutex<()>,
     factory: F,
     persister: P,
     sandboxes: RwLock<HashMap<SandboxId, SandboxHandle>>,
@@ -226,6 +229,7 @@ where
 
         let orchestrator = Arc::new(Self {
             store,
+            name_mutations: Mutex::new(()),
             factory,
             persister,
             sandboxes: RwLock::new(HashMap::new()),
@@ -466,14 +470,16 @@ where
             extra_drives: launch_extra_drives,
             extra_drives_in_snapshot,
         } = request;
+        let _name_guard = if let Some(name) = name.as_deref() {
+            super::validate_sandbox_name(name)?;
+            Some(self.name_mutations.lock().await)
+        } else {
+            None
+        };
         if let Some(name) = name.as_deref() {
-            if self
-                .store
-                .list()
-                .await?
-                .iter()
-                .any(|metadata| metadata.name.as_deref() == Some(name))
-            {
+            if self.store.list().await?.iter().any(|metadata| {
+                !metadata.template_builder && metadata.name.as_deref() == Some(name)
+            }) {
                 return Err(OrchestratorError::SandboxNameConflict {
                     name: name.to_owned(),
                 });
@@ -890,6 +896,105 @@ where
         Ok(self.store.get(sandbox_id).await?)
     }
 
+    /// Refresh display metadata from the running guest; never resume it or fail a list on RPC loss.
+    pub async fn refresh_hostname(&self, metadata: SandboxMetadata) -> SandboxMetadata {
+        if metadata.state != SandboxState::Running {
+            return metadata;
+        }
+        let Some(handle) = self.sandboxes.read().await.get(&metadata.id).cloned() else {
+            return metadata;
+        };
+        let hostname = {
+            let Ok(mut sandbox) = handle.try_lock() else {
+                return metadata;
+            };
+            match tokio::time::timeout(HOSTNAME_READ_TIMEOUT, sandbox.hostname()).await {
+                Ok(Ok(Some(hostname))) => hostname,
+                _ => return metadata,
+            }
+        };
+        // A concurrent resume may have replaced the runtime while the guest was queried.
+        let sandboxes = self.sandboxes.read().await;
+        if sandboxes
+            .get(&metadata.id)
+            .is_none_or(|current| !Arc::ptr_eq(current, &handle))
+        {
+            return metadata;
+        }
+        match self
+            .store
+            .update_if_state(&metadata.id, &[SandboxState::Running], |metadata| {
+                metadata.hostname = hostname;
+            })
+            .await
+        {
+            Ok(update) => update.current,
+            Err(_) => metadata,
+        }
+    }
+
+    /// Rename the control-plane identity without touching the guest or its timeout.
+    pub async fn rename_sandbox(
+        self: &Arc<Self>,
+        sandbox_id: SandboxId,
+        name: String,
+    ) -> Result<SandboxMetadata> {
+        super::validate_sandbox_name(&name)?;
+        let this = Arc::clone(self);
+        self.run_cancellation_safe("rename", sandbox_id, async move {
+            let _guard = this.name_mutations.lock().await;
+            this.ensure_accepting_lifecycle_operations()?;
+            let metadata = this
+                .store
+                .get(&sandbox_id)
+                .await?
+                .filter(|metadata| !metadata.template_builder)
+                .ok_or(OrchestratorError::SandboxNotFound(sandbox_id))?;
+            if !matches!(metadata.state, SandboxState::Running | SandboxState::Paused) {
+                return Err(OrchestratorError::InvalidSandboxState {
+                    sandbox_id,
+                    state: metadata.state,
+                });
+            }
+            if this
+                .store
+                .list()
+                .await?
+                .iter()
+                .any(|other| other.id != sandbox_id && other.name.as_deref() == Some(name.as_str()))
+            {
+                return Err(OrchestratorError::SandboxNameConflict { name });
+            }
+            let update = this
+                .store
+                .update_if_state(&sandbox_id, &[metadata.state], |metadata| {
+                    metadata.name = Some(name.clone());
+                })
+                .await
+                .map_err(|error| match error {
+                    StoreError::StateConflict { actual_state, .. } => {
+                        OrchestratorError::InvalidSandboxState {
+                            sandbox_id,
+                            state: actual_state,
+                        }
+                    }
+                    other => other.into(),
+                })?;
+            if metadata.state == SandboxState::Paused {
+                if let Err(error) = this.persister.rename_paused(&sandbox_id, Some(&name)).await {
+                    this.store
+                        .update_if_state(&sandbox_id, &[SandboxState::Paused], |metadata| {
+                            metadata.name = update.previous.name;
+                        })
+                        .await?;
+                    return Err(error.into());
+                }
+            }
+            Ok(update.current)
+        })
+        .await
+    }
+
     /// Lists all sandboxes with their metadata.
     #[tracing::instrument(skip(self))]
     pub async fn list_sandboxes(&self) -> Result<Vec<SandboxMetadata>> {
@@ -1130,15 +1235,17 @@ where
         // Attempt to transition to Killing, retrying after waiting whenever we
         // find the sandbox in a transitional state.
         let previous_state = loop {
-            match self
-                .store
-                .update_state_if_state(
-                    &sandbox_id,
-                    SandboxState::Killing,
-                    &[SandboxState::Running, SandboxState::Paused],
-                )
-                .await
-            {
+            let transition = {
+                let _guard = self.name_mutations.lock().await;
+                self.store
+                    .update_state_if_state(
+                        &sandbox_id,
+                        SandboxState::Killing,
+                        &[SandboxState::Running, SandboxState::Paused],
+                    )
+                    .await
+            };
+            match transition {
                 Ok(previous_state) => break previous_state,
                 Err(StoreError::StateConflict { actual_state, .. }) => match actual_state {
                     SandboxState::Killing => {
@@ -1530,6 +1637,17 @@ where
         // Pause the sandbox and capture the paused state for resuming later.
         let paused_state_result = {
             let mut sandbox = handle.lock().await;
+            if let Ok(Ok(Some(hostname))) =
+                tokio::time::timeout(HOSTNAME_READ_TIMEOUT, sandbox.hostname()).await
+            {
+                // Capture a last observation even when no list/info was requested before pause.
+                let _ = self
+                    .store
+                    .update_if_state(&sandbox_id, &[SandboxState::Pausing], |metadata| {
+                        metadata.hostname = hostname;
+                    })
+                    .await;
+            }
             sandbox.pause(artifact_root.as_deref()).await
         };
 
@@ -1721,11 +1839,13 @@ where
             });
         }
 
-        match self
-            .store
-            .update_state_if_state(&sandbox_id, SandboxState::Resuming, &[SandboxState::Paused])
-            .await
-        {
+        let transition = {
+            let _guard = self.name_mutations.lock().await;
+            self.store
+                .update_state_if_state(&sandbox_id, SandboxState::Resuming, &[SandboxState::Paused])
+                .await
+        };
+        match transition {
             Ok(_) => {}
             Err(StoreError::StateConflict { actual_state, .. }) => {
                 return match actual_state {

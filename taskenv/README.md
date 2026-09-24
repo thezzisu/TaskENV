@@ -51,13 +51,16 @@ taskenv start taskenv-ubuntu-24-04-dev-desktop \
   --name web-test --hostname web-test --timeout 14400 -d
 taskenv connect web-test --gui
 taskenv exec web-test -- hostname
+taskenv rename web-test web-test-renamed
 ```
 
 Sandbox names are unique human-readable selectors stored by the control plane;
 every command that accepts a sandbox ID also accepts its name. `taskenv list`
 shows both values. `--hostname` sets the guest hostname during startup and is
-returned in sandbox metadata; a process inside the VM may change its hostname
-later, and TaskENV does not reset that change during the running session.
+returned in sandbox metadata. `taskenv rename` changes only the control-plane
+name. A process inside the VM may change its hostname later; list/detail
+queries read the current guest value when the sandbox is running, and retain
+the last observed value while it is paused or unavailable.
 
 The CLI opens a random loopback port for the duration of the connection. It prints an OSC 8 clickable localhost URL with a plain-text fallback and never opens a browser. Ctrl-C removes the forward. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
 

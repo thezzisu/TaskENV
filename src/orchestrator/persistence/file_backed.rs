@@ -371,6 +371,16 @@ impl SandboxPersister for FileBackedSandboxPersister {
         result
     }
 
+    async fn rename_paused(
+        &self,
+        sandbox_id: &SandboxId,
+        name: Option<&str>,
+    ) -> PersistenceResult<()> {
+        let mut record = self.get_record(sandbox_id).await?;
+        record.metadata.name = name.map(str::to_owned);
+        self.put_record(&record).await
+    }
+
     async fn mark_resuming(&self, sandbox_id: &SandboxId) -> PersistenceResult<()> {
         debug!(sandbox_id = %sandbox_id, "marking paused sandbox as resuming");
         let mut record = self.get_record(sandbox_id).await?;

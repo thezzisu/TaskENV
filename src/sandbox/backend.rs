@@ -183,6 +183,11 @@ impl fmt::Debug for CapturedSandboxSnapshot {
 /// `Arc<Mutex<Box<dyn SandboxBackend>>>` handles managed by the Orchestrator.
 #[async_trait]
 pub trait SandboxBackend: Send + 'static {
+    /// Read the current guest hostname without changing guest state.
+    async fn hostname(&mut self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Start the sandbox and block until readiness.
     async fn start(&mut self) -> Result<()>;
 

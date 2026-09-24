@@ -106,6 +106,7 @@ fn make_orchestrator_without_background_with_factory_and_persister<
         tokio::sync::broadcast::channel(SANDBOX_EVENT_CHANNEL_CAPACITY);
     Arc::new(Orchestrator {
         store,
+        name_mutations: Mutex::new(()),
         factory,
         persister,
         sandboxes: RwLock::new(HashMap::new()),
@@ -5586,5 +5587,190 @@ async fn fork_sandbox_register_failure_cleans_up_metrics() -> Result<()> {
 
     orchestrator.delete_sandbox(child.id).await?;
     orchestrator.delete_sandbox(source.id).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn rename_preserves_guest_identity_timeout_and_runtime() -> Result<()> {
+    let orchestrator = make_orchestrator_without_background(InMemoryMetadataStore::new());
+    let mut request = create_request(Some(600), &[("project", "demo")]);
+    request.name = Some("before".into());
+    request.hostname = "guest-name".into();
+    let created = orchestrator.create_sandbox(request).await?;
+    let handle = orchestrator.sandboxes.read().await[&created.id].clone();
+    let renamed = orchestrator
+        .rename_sandbox(created.id, "after".into())
+        .await?;
+    assert_eq!(renamed.name.as_deref(), Some("after"));
+    assert_eq!(renamed.hostname, created.hostname);
+    assert_eq!(renamed.expires_at, created.expires_at);
+    assert_eq!(renamed.user_metadata, created.user_metadata);
+    assert!(Arc::ptr_eq(
+        &handle,
+        &orchestrator.sandboxes.read().await[&created.id]
+    ));
+    orchestrator
+        .rename_sandbox(created.id, "after".into())
+        .await?;
+    let mut reuse = create_request(Some(60), &[]);
+    reuse.name = Some("before".into());
+    orchestrator.create_sandbox(reuse).await?;
+    for invalid in ["", "bad/name", "-name", &SandboxId::new().to_string()] {
+        assert!(matches!(
+            orchestrator
+                .rename_sandbox(created.id, invalid.into())
+                .await,
+            Err(OrchestratorError::InvalidSandboxName)
+        ));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn name_allocation_is_exclusive_across_create_and_rename() -> Result<()> {
+    let orchestrator = make_orchestrator_without_background(InMemoryMetadataStore::new());
+    let existing = orchestrator
+        .create_sandbox(create_request(Some(600), &[]))
+        .await?;
+    let mut request = create_request(Some(600), &[]);
+    request.name = Some("same-name".into());
+    let (created, renamed) = tokio::join!(
+        orchestrator.create_sandbox(request),
+        orchestrator.rename_sandbox(existing.id, "same-name".into()),
+    );
+    assert_ne!(created.is_ok(), renamed.is_ok());
+    let error = created.err().or(renamed.err()).unwrap();
+    assert!(matches!(
+        error,
+        OrchestratorError::SandboxNameConflict { .. }
+    ));
+    let another = orchestrator
+        .create_sandbox(create_request(Some(600), &[]))
+        .await?;
+    let (first, second) = tokio::join!(
+        orchestrator.rename_sandbox(existing.id, "another-name".into()),
+        orchestrator.rename_sandbox(another.id, "another-name".into()),
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    Ok(())
+}
+
+#[tokio::test]
+async fn paused_rename_survives_reload_and_failure_keeps_previous_name() -> anyhow::Result<()> {
+    let root = TempDir::new()?;
+    let orchestrator = make_orchestrator_without_background_with_factory_and_persister(
+        InMemoryMetadataStore::new(),
+        MockBackendFactory::new(),
+        FileBackedSandboxPersister::new_for_test(root.path().join("paused")),
+    );
+    let created = orchestrator
+        .create_sandbox(create_request(Some(600), &[]))
+        .await?;
+    orchestrator.pause_sandbox(created.id).await?;
+    orchestrator
+        .rename_sandbox(created.id, "saved-name".into())
+        .await?;
+    let loaded = orchestrator
+        .persister
+        .load_all(&MockBackendFactory::new())
+        .await?;
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].name.as_deref(), Some("saved-name"));
+    assert!(loaded[0].paused_state.is_some());
+    assert_eq!(loaded[0].expires_at, created.expires_at);
+    orchestrator
+        .resume_sandbox(created.id, NewTimeout::UseExisting)
+        .await?;
+    assert_eq!(
+        orchestrator
+            .get_sandbox(&created.id)
+            .await?
+            .unwrap()
+            .name
+            .as_deref(),
+        Some("saved-name")
+    );
+
+    let persister = RecordingPersister::default();
+    let failing = make_orchestrator_without_background_with_factory_and_persister(
+        InMemoryMetadataStore::new(),
+        MockBackendFactory::new(),
+        persister.clone(),
+    );
+    let mut metadata = SandboxMetadata {
+        state: SandboxState::Paused,
+        ..Default::default()
+    };
+    metadata.name = Some("original".into());
+    failing.store.add(metadata.clone()).await?;
+    persister.fail_next(RecordingCall::RenamePaused);
+    assert!(failing
+        .rename_sandbox(metadata.id, "failed-name".into())
+        .await
+        .is_err());
+    assert_eq!(
+        failing.get_sandbox(&metadata.id).await?.unwrap().name,
+        metadata.name
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn rename_rejects_transitional_sandboxes() -> Result<()> {
+    let orchestrator = make_orchestrator_without_background(InMemoryMetadataStore::new());
+    let metadata = SandboxMetadata {
+        state: SandboxState::Resuming,
+        ..Default::default()
+    };
+    orchestrator.store.add(metadata.clone()).await?;
+    assert!(matches!(
+        orchestrator
+            .rename_sandbox(metadata.id, "busy".into())
+            .await,
+        Err(OrchestratorError::InvalidSandboxState { .. })
+    ));
+    assert!(orchestrator
+        .get_sandbox(&metadata.id)
+        .await?
+        .unwrap()
+        .name
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test]
+async fn hostname_tracks_guest_changes_and_preserves_last_observation_on_rpc_failure() -> Result<()>
+{
+    let behavior = Arc::new(MockBehavior::new());
+    let orchestrator = make_orchestrator_without_background_with_factory(
+        InMemoryMetadataStore::new(),
+        MockBackendFactory::with_behavior(behavior.clone()),
+    );
+    let created = orchestrator
+        .create_sandbox(create_request(Some(600), &[]))
+        .await?;
+    behavior.set_hostname("changed-inside");
+    let observed = orchestrator.refresh_hostname(created.clone()).await;
+    assert_eq!(observed.hostname, "changed-inside");
+    assert_eq!(observed.expires_at, created.expires_at);
+    behavior.push_action(
+        MockOperation::Hostname,
+        MockAction::Fail {
+            message: "envd unreachable".into(),
+        },
+    );
+    assert_eq!(
+        orchestrator.refresh_hostname(observed).await.hostname,
+        "changed-inside"
+    );
+    behavior.set_hostname("changed-before-pause");
+    orchestrator.pause_sandbox(created.id).await?;
+    let paused = orchestrator.get_sandbox(&created.id).await?.unwrap();
+    assert_eq!(paused.hostname, "changed-before-pause");
+    behavior.set_hostname("must-not-read-paused-guest");
+    assert_eq!(
+        orchestrator.refresh_hostname(paused).await.hostname,
+        "changed-before-pause"
+    );
     Ok(())
 }

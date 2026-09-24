@@ -33,7 +33,7 @@ pub struct SandboxMetadata {
     /// Optional human-readable name unique within the deployment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Hostname requested inside the guest. Older records default to taskenv.
+    /// Last observed guest hostname; seeded from the create request until the first observation.
     #[serde(default = "default_hostname")]
     pub hostname: String,
     /// Server-owned template builder, excluded from public sandbox APIs.

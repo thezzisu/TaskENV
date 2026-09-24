@@ -24,10 +24,6 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 use tokio::time::Duration;
 
-fn default_hostname() -> String {
-    "taskenv".to_owned()
-}
-
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /// Fallback boot arguments when `config.firecracker.boot_args` is not set.
@@ -141,9 +137,9 @@ pub struct FirecrackerCommonConfig {
     #[serde(default)]
     pub track_dirty_pages: bool,
     pub envd_version: String,
-    /// Guest hostname applied after envd is ready. Older snapshot configs use taskenv.
-    #[serde(default = "default_hostname")]
-    pub hostname: String,
+    /// One-time hostname for a new instance; resumes preserve the captured guest state.
+    #[serde(skip)]
+    pub hostname: Option<String>,
     /// Control plane port inside the VM (default: 49983).
     pub control_plane_port: u16,
     pub env_vars: Option<HashMap<String, String>>,
@@ -202,7 +198,7 @@ impl FirecrackerCommonConfig {
             runtime_policy,
             track_dirty_pages: true,
             envd_version: EnvdConfig::default().version,
-            hostname: default_hostname(),
+            hostname: Some("taskenv".to_owned()),
             control_plane_port: ToolsConfig::default().control_plane_port,
             env_vars: None,
             default_workdir: None,
@@ -428,7 +424,7 @@ impl FirecrackerSandboxConfig {
     }
 
     pub fn apply_launch_config(mut self, launch_config: &SandboxLaunchConfig) -> Self {
-        self.common.hostname = launch_config.hostname.clone();
+        self.common.hostname = Some(launch_config.hostname.clone());
         if let Some(env_vars) = launch_config
             .env_vars
             .as_ref()

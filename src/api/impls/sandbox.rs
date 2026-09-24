@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use axum_extra::extract::CookieJar;
+use futures::{stream, StreamExt};
 use headers::Host;
 use http::Method;
 
@@ -56,6 +57,7 @@ impl From<OrchestratorError> for models::Error {
                 Self::new(503, "orchestrator is shutting down".to_string())
             }
             OrchestratorError::SandboxNotFound(id) => sandbox_not_found(id),
+            OrchestratorError::InvalidSandboxName => Self::new(400, err.to_string()),
             OrchestratorError::SandboxNameConflict { name } => {
                 ApiImpl::error(409, format!("sandbox name '{name}' is already in use"))
             }
@@ -510,28 +512,15 @@ fn duration_from_secs(secs: Option<u32>) -> Option<Duration> {
 }
 
 fn validate_sandbox_name(name: Option<&String>) -> Result<Option<String>, models::Error> {
-    let Some(name) = name else { return Ok(None) };
-    if name.is_empty()
-        || name.len() > 128
-        || !name
-            .as_bytes()
-            .first()
-            .is_some_and(u8::is_ascii_alphanumeric)
-        || !name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
-    {
-        return Err(ApiImpl::error(
-            400,
-            "sandbox name must be 1-128 characters and contain only letters, numbers, '.', '_' or '-'".to_string(),
-        ));
+    if let Some(name) = name {
+        crate::orchestrator::validate_sandbox_name(name).map_err(models::Error::from)?;
     }
-    Ok(Some(name.clone()))
+    Ok(name.cloned())
 }
 
 fn validate_hostname(hostname: Option<&String>) -> Result<String, models::Error> {
     let hostname = hostname.map(String::as_str).unwrap_or("taskenv");
-    if hostname.len() > 253
+    if hostname.len() > 64
         || hostname.is_empty()
         || hostname.split('.').any(|label| {
             label.is_empty()
@@ -962,7 +951,12 @@ impl Sandboxes<()> for ApiImpl {
             }
         };
 
-        let out = list.into_iter().map(models::ListedSandbox::from).collect();
+        let out = stream::iter(list)
+            .map(|metadata| self.orchestrator.refresh_hostname(metadata))
+            .buffered(16)
+            .map(models::ListedSandbox::from)
+            .collect()
+            .await;
 
         Ok(SandboxesGetResponse::Status200_SuccessfullyReturnedAllRunningSandboxes(out))
     }
@@ -1466,8 +1460,44 @@ impl Sandboxes<()> for ApiImpl {
         };
         Ok(
             SandboxesSandboxIdGetResponse::Status200_SuccessfullyReturnedTheSandbox(
-                self.sandbox_detail_model(metadata),
+                self.sandbox_detail_model(self.orchestrator.refresh_hostname(metadata).await),
             ),
+        )
+    }
+
+    async fn sandboxes_sandbox_id_rename_post(
+        &self,
+        _method: &Method,
+        _host: &Host,
+        _cookies: &CookieJar,
+        _claims: &Self::Claims,
+        path_params: &models::SandboxesSandboxIdRenamePostPathParams,
+        body: &models::SandboxRenameRequest,
+    ) -> Result<SandboxesSandboxIdRenamePostResponse, ()> {
+        use SandboxesSandboxIdRenamePostResponse::*;
+        let path_id = &path_params.sandbox_id;
+        let Ok(sandbox_id) = SandboxId::parse_str(path_id) else {
+            return Ok(Status404_NotFound(sandbox_not_found(path_id)));
+        };
+        Ok(
+            match self
+                .orchestrator
+                .rename_sandbox(sandbox_id, body.name.clone())
+                .await
+            {
+                Ok(_) => Status204_SandboxRenamedSuccessfully,
+                Err(error @ OrchestratorError::InvalidSandboxName) => {
+                    Status400_BadRequest(error.into())
+                }
+                Err(OrchestratorError::SandboxNotFound(id)) => {
+                    Status404_NotFound(sandbox_not_found(id))
+                }
+                Err(
+                    error @ (OrchestratorError::SandboxNameConflict { .. }
+                    | OrchestratorError::InvalidSandboxState { .. }),
+                ) => Status409_Conflict(Self::error(409, error.to_string())),
+                Err(error) => Status500_ServerError(error.into()),
+            },
         )
     }
 
@@ -1979,11 +2009,12 @@ impl Sandboxes<()> for ApiImpl {
             |sandbox| PaginationCursor::new(sandbox.created_at, sandbox.id, descending),
         );
 
-        let out = page
-            .items
-            .into_iter()
+        let out = stream::iter(page.items)
+            .map(|metadata| self.orchestrator.refresh_hostname(metadata))
+            .buffered(16)
             .map(models::ListedSandbox::from)
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .await;
 
         Ok(
             V2SandboxesGetResponse::Status200_SuccessfullyReturnedAllRunningSandboxes {

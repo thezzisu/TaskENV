@@ -83,6 +83,13 @@ pub trait SandboxPersister: Send + Sync {
         paused_state: &dyn PausedSandboxState,
     ) -> PersistenceResult<()>;
 
+    /// Update only a paused sandbox's name, preserving its captured runtime and artifacts.
+    async fn rename_paused(
+        &self,
+        sandbox_id: &SandboxId,
+        name: Option<&str>,
+    ) -> PersistenceResult<()>;
+
     /// Mark a paused sandbox as resuming.
     async fn mark_resuming(&self, sandbox_id: &SandboxId) -> PersistenceResult<()>;
 
@@ -101,6 +108,14 @@ pub struct DisabledSandboxPersister;
 
 #[async_trait]
 impl SandboxPersister for DisabledSandboxPersister {
+    async fn rename_paused(
+        &self,
+        _sandbox_id: &SandboxId,
+        _name: Option<&str>,
+    ) -> PersistenceResult<()> {
+        Ok(())
+    }
+
     async fn load_all<F>(&self, _factory: &F) -> PersistenceResult<Vec<SandboxMetadata>>
     where
         F: SandboxBackendFactory,

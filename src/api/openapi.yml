@@ -424,11 +424,11 @@ components:
         name:
           type: string
           maxLength: 128
-          description: Optional human-readable sandbox name. Names are unique within the deployment.
+          description: Optional human-readable sandbox name, unique on the runtime node. UUIDs are reserved for IDs.
         hostname:
           type: string
-          maxLength: 253
-          description: Hostname requested inside the sandbox. Defaults to taskenv.
+          maxLength: 64
+          description: Last observed guest hostname. Running guests are queried on list/detail; unavailable or paused guests retain the last observation.
         alias:
           type: string
           description: Alias of the template
@@ -475,11 +475,11 @@ components:
         name:
           type: string
           maxLength: 128
-          description: Optional human-readable sandbox name. Names are unique within the deployment.
+          description: Optional human-readable sandbox name, unique on the runtime node. UUIDs are reserved for IDs.
         hostname:
           type: string
-          maxLength: 253
-          description: Hostname requested inside the sandbox. Defaults to taskenv.
+          maxLength: 64
+          description: Last observed guest hostname. Running guests are queried on list/detail; unavailable or paused guests retain the last observation.
         clientID:
           type: string
           deprecated: true
@@ -549,11 +549,11 @@ components:
         name:
           type: string
           maxLength: 128
-          description: Optional human-readable sandbox name. Names are unique within the deployment.
+          description: Optional human-readable sandbox name, unique on the runtime node. UUIDs are reserved for IDs.
         hostname:
           type: string
-          maxLength: 253
-          description: Hostname requested inside the sandbox. Defaults to taskenv.
+          maxLength: 64
+          description: Last observed guest hostname. Running guests are queried on list/detail; unavailable or paused guests retain the last observation.
         clientID:
           type: string
           deprecated: true
@@ -596,10 +596,10 @@ components:
         name:
           type: string
           maxLength: 128
-          description: Optional human-readable sandbox name. Names are unique within the deployment.
+          description: Optional human-readable sandbox name, unique on the runtime node. UUIDs are reserved for IDs.
         hostname:
           type: string
-          maxLength: 253
+          maxLength: 64
           description: Hostname to set inside the sandbox. Defaults to taskenv.
         timeout:
           type: integer
@@ -658,10 +658,10 @@ components:
         name:
           type: string
           maxLength: 128
-          description: Optional human-readable sandbox name. Names are unique within the deployment.
+          description: Optional human-readable sandbox name, unique on the runtime node. UUIDs are reserved for IDs.
         hostname:
           type: string
-          maxLength: 253
+          maxLength: 64
           description: Hostname to set inside the sandbox. Defaults to taskenv.
         timeout:
           type: integer
@@ -743,6 +743,17 @@ components:
           type: integer
           maximum: 3600 # 1 hour
           minimum: 0
+
+    SandboxRenameRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: New sandbox name. Uses ASCII letters, digits, dot, underscore or hyphen, starts with a letter or digit, and must not be a UUID.
 
     SandboxSnapshotRequest:
       type: object
@@ -1917,6 +1928,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Sandbox"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /sandboxes/{sandboxID}/rename:
+    post:
+      summary: Rename sandbox
+      description: Rename a running or paused sandbox without changing its ID, hostname or lifetime. Names are unique on the runtime node; transitional states and duplicate names return 409.
+      tags: [sandboxes]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/sandboxID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SandboxRenameRequest"
+      responses:
+        "204":
+          description: Sandbox renamed successfully
         "400":
           $ref: "#/components/responses/400"
         "401":

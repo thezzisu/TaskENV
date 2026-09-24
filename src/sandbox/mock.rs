@@ -43,6 +43,7 @@ pub struct MockCapturedSnapshot;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MockOperation {
+    Hostname,
     Build,
     BuildFromSnapshot,
     Start,
@@ -70,6 +71,7 @@ pub enum MockAction {
 
 #[derive(Default)]
 pub struct MockBehavior {
+    hostname: Mutex<Option<String>>,
     actions: Mutex<HashMap<MockOperation, VecDeque<MockAction>>>,
     on_operation: Mutex<HashMap<MockOperation, Arc<dyn Fn() + Send + Sync>>>,
     runtime_info: Mutex<SandboxRuntimeInfo>,
@@ -79,6 +81,10 @@ pub struct MockBehavior {
 }
 
 impl MockBehavior {
+    pub fn set_hostname(&self, hostname: &str) {
+        *self.hostname.lock().unwrap() = Some(hostname.to_owned());
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -268,6 +274,11 @@ impl MockSandboxBackend {
 
 #[async_trait]
 impl SandboxBackend for MockSandboxBackend {
+    async fn hostname(&mut self) -> Result<Option<String>> {
+        self.behavior.apply_async(MockOperation::Hostname).await?;
+        Ok(self.behavior.hostname.lock().unwrap().clone())
+    }
+
     async fn start(&mut self) -> Result<()> {
         self.behavior.apply_async(MockOperation::Start).await
     }

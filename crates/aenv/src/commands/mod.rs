@@ -9,6 +9,7 @@ pub mod gui;
 pub mod list;
 pub mod pause;
 pub mod pull;
+pub mod rename;
 pub mod resume;
 pub mod snapshot;
 pub mod start;

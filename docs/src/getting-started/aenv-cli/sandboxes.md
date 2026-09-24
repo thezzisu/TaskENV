@@ -167,6 +167,19 @@ aenv list
 |------|-------------|
 | `--output <table\|json>` | Output format. Defaults to table on a TTY and JSON when redirected. |
 
+Sandbox IDs and names are both accepted by lifecycle, shell, file-transfer and
+snapshot commands. Use `--name` and `--hostname` when starting a sandbox, then
+rename it without changing its ID:
+
+```bash
+aenv start my-template --name web-test --hostname web-test -d
+aenv rename web-test web-test-renamed
+aenv exec web-test-renamed -- hostname
+```
+
+The hostname shown by `aenv list` and sandbox detail is read from the running
+guest. A paused sandbox shows its last observed hostname.
+
 ## `aenv delete <sandbox-id>`
 
 Kill and delete a sandbox. Alias: `aenv rm`.

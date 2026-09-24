@@ -9,6 +9,20 @@ use crate::sandbox::CustomExtensionParams;
 use crate::snapshot::CommandContext;
 use crate::types::{ImageConfigs, SandboxId, SandboxResources};
 
+pub fn validate_sandbox_name(name: &str) -> super::Result<()> {
+    if name.is_empty()
+        || name.len() > 128
+        || !name.as_bytes()[0].is_ascii_alphanumeric()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        || uuid::Uuid::parse_str(name).is_ok()
+    {
+        return Err(super::OrchestratorError::InvalidSandboxName);
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub enum SandboxLaunchSource {
     Snapshot(Box<crate::snapshot::RunnableSnapshot>),
