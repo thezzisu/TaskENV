@@ -39,5 +39,5 @@ python3 -m venv ~/.local/share/desktop-agent
 for n in {1..30}; do if /agentenv/deskd check; then break; fi; sleep 1; done
 /agentenv/deskd check
 sudo apt-get clean
-rm -rf "$work"
+sudo rm -rf -- "$work"
 echo TASKENV_DESKTOP_INSTALLED

@@ -21,6 +21,8 @@ For the deployment KVM smoke helper, upload `taskenv/tests/kvm-smoke.c` to `/tmp
 
 After testing and cleaning with `clean.sh`, snapshot each instance and publish with `--dev` or `--desktop`, respectively. To build `taskenv-ubuntu-24-04-dev-desktop`, start an instance of `taskenv-ubuntu-24-04-dev`, install the same desktop suite, and publish with **both** `--dev --desktop`.
 
+Run `clean.sh` as `ubuntu` in the disposable builder, with shell history disabled (`unset HISTFILE`), and upload it to `/tmp/clean-taskenv.sh`. It removes provisioning scripts/logs and the `~/taskenv-install` package staging directory, including root-owned uploads. It also clears build caches/history and restarts the desktop, so do not run it on an in-use sandbox. Before publishing, launch a fresh clone and inspect `~/` for leftover build files; installed toolchain directories such as `~/.nvm` and `~/.cargo` are required runtime content.
+
 No GUI is installed into a headless template. Browser and toolchain state stay in the sandbox rootfs and are captured normally. `envd`, `deskd`, their session helper and systemd units come exclusively from the tools drive mounted at `/agentenv`. The rootfs holds only dependencies and standard service enablement links. Every snapshot pins the complete tools release.
 
 New template aliases must be unused. The upstream repository rejects alias collisions. Build and verify a staging template before replacing an existing production name. Do not modify catalog files by hand.
