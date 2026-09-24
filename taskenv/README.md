@@ -6,7 +6,7 @@ TaskENV is a soft fork of [AgentENV](https://github.com/kvcache-ai/AgentENV) for
 
 The Rust packages, API, configuration keys (`AENV_*`), state paths (`/var/lib/aenv`), service account, and existing `aenv` command remain compatible. `taskenv` is another entry point to the same CLI, with TaskENV help branding. `taskenv.service` names the same service as `aenv.service`, not a second server. Host networking and storage remain unchanged.
 
-The upstream tools-drive lifecycle is retained. Agent sources and units live in `tools-image/`; distribution recipes and deployment scripts live under `taskenv/`. `origin` is `thezzisu/TaskENV`; `upstream` is `kvcache-ai/AgentENV` with its push URL disabled. Use a review branch for upstream updates:
+The upstream tools-drive lifecycle is retained. Agent sources and units live in `tools-image/`; distribution recipes and deployment scripts live under `taskenv/`. Keep your TaskENV fork as `origin` and the AgentENV repository as `upstream` with its push URL disabled. Use a review branch for upstream updates:
 
 ```bash
 git fetch upstream
