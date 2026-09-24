@@ -56,6 +56,9 @@ impl From<OrchestratorError> for models::Error {
                 Self::new(503, "orchestrator is shutting down".to_string())
             }
             OrchestratorError::SandboxNotFound(id) => sandbox_not_found(id),
+            OrchestratorError::SandboxNameConflict { name } => {
+                ApiImpl::error(409, format!("sandbox name '{name}' is already in use"))
+            }
             OrchestratorError::InvalidSandboxState { .. } => Self::new(400, err.to_string()),
             OrchestratorError::SandboxOperationFailed {
                 sandbox_id,
@@ -341,6 +344,8 @@ impl From<SandboxMetadata> for models::ListedSandbox {
             template_id: m.snapshot_id,
             alias: m.snapshot_alias,
             sandbox_id: m.id.into(),
+            name: m.name,
+            hostname: Some(m.hostname),
             client_id: "".to_string(), // Deprecated field, only reserved for E2B Python SDK.
             started_at: started_at(m.created_at),
             end_at: end_at(m.expires_at),
@@ -360,6 +365,8 @@ impl From<SandboxMetadata> for models::Sandbox {
         Self {
             template_id: m.snapshot_id,
             sandbox_id: m.id.into(),
+            name: m.name,
+            hostname: Some(m.hostname),
             alias: m.snapshot_alias,
             client_id: "".to_string(), // Deprecated field, only reserved for E2B Python SDK.
             envd_version: m.runtime_versions.envd_version.clone(),
@@ -425,6 +432,8 @@ impl From<SandboxMetadata> for models::SandboxDetail {
             template_id: m.snapshot_id,
             alias: m.snapshot_alias,
             sandbox_id: m.id.into(),
+            name: m.name,
+            hostname: Some(m.hostname),
             client_id: "".to_string(), // Deprecated field, only reserved for E2B Python SDK.
             started_at: started_at(m.created_at),
             end_at: end_at(m.expires_at),
@@ -498,6 +507,54 @@ fn parse_metadata_filter(raw: &Option<String>) -> Option<HashMap<String, String>
 
 fn duration_from_secs(secs: Option<u32>) -> Option<Duration> {
     secs.map(|s| Duration::from_secs(s as u64))
+}
+
+fn validate_sandbox_name(name: Option<&String>) -> Result<Option<String>, models::Error> {
+    let Some(name) = name else { return Ok(None) };
+    if name.is_empty()
+        || name.len() > 128
+        || !name
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+    {
+        return Err(ApiImpl::error(
+            400,
+            "sandbox name must be 1-128 characters and contain only letters, numbers, '.', '_' or '-'".to_string(),
+        ));
+    }
+    Ok(Some(name.clone()))
+}
+
+fn validate_hostname(hostname: Option<&String>) -> Result<String, models::Error> {
+    let hostname = hostname.map(String::as_str).unwrap_or("taskenv");
+    if hostname.len() > 253
+        || hostname.is_empty()
+        || hostname.split('.').any(|label| {
+            label.is_empty()
+                || label.len() > 63
+                || !label
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_alphanumeric)
+                || !label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                || !label
+                    .as_bytes()
+                    .last()
+                    .is_some_and(u8::is_ascii_alphanumeric)
+        })
+    {
+        return Err(ApiImpl::error(
+            400,
+            "hostname must contain RFC-1123 labels separated by dots".to_string(),
+        ));
+    }
+    Ok(hostname.to_owned())
 }
 
 /// `timeout: 0` explicitly disables expiration. Omitting the field retains
@@ -681,6 +738,14 @@ impl Sandboxes<()> for ApiImpl {
         _claims: &Self::Claims,
         body: &models::NewColdSandbox,
     ) -> Result<SandboxesColdPostResponse, ()> {
+        let name = match validate_sandbox_name(body.name.as_ref()) {
+            Ok(name) => name,
+            Err(error) => return Ok(SandboxesColdPostResponse::Status400_BadRequest(error)),
+        };
+        let hostname = match validate_hostname(body.hostname.as_ref()) {
+            Ok(hostname) => hostname,
+            Err(error) => return Ok(SandboxesColdPostResponse::Status400_BadRequest(error)),
+        };
         let image_resolver = self.image_resolver();
         let timer = SandboxStageTimer::new("create_cold");
         // TODO: Move cold-start image resolution into an async create operation
@@ -787,6 +852,8 @@ impl Sandboxes<()> for ApiImpl {
                 extra_boot_args: body.extra_boot_args.clone(),
                 image_configs: Box::new(image_configs),
             },
+            name,
+            hostname,
             extra_drives: Vec::new(),
             extra_drives_in_snapshot: false,
             timeout: duration_from_secs(body.timeout),
@@ -863,6 +930,9 @@ impl Sandboxes<()> for ApiImpl {
                     Some(message) => Ok(SandboxesColdPostResponse::Status400_BadRequest(
                         Self::error(400, message),
                     )),
+                    None if matches!(&err, OrchestratorError::SandboxNameConflict { .. }) => {
+                        Ok(SandboxesColdPostResponse::Status409_Conflict(err.into()))
+                    }
                     None => Ok(SandboxesColdPostResponse::Status500_ServerError(
                         Self::internal_error(&err),
                     )),
@@ -905,6 +975,14 @@ impl Sandboxes<()> for ApiImpl {
         _claims: &Self::Claims,
         body: &models::NewSandbox,
     ) -> Result<SandboxesPostResponse, ()> {
+        let name = match validate_sandbox_name(body.name.as_ref()) {
+            Ok(name) => name,
+            Err(error) => return Ok(SandboxesPostResponse::Status400_BadRequest(error)),
+        };
+        let hostname = match validate_hostname(body.hostname.as_ref()) {
+            Ok(hostname) => hostname,
+            Err(error) => return Ok(SandboxesPostResponse::Status400_BadRequest(error)),
+        };
         let timer = SandboxStageTimer::new("create_warm");
         let snapshot = match timer
             .time(
@@ -992,6 +1070,8 @@ impl Sandboxes<()> for ApiImpl {
 
         let request = CreateSandboxRequest {
             source: SandboxLaunchSource::Snapshot(Box::new(snapshot)),
+            name,
+            hostname,
             extra_drives: volume_drives,
             extra_drives_in_snapshot,
             timeout: duration_from_secs(body.timeout),
@@ -1054,9 +1134,17 @@ impl Sandboxes<()> for ApiImpl {
                 )
                 .await;
                 cleanup_volume_ids(&self.volume_manager, &restored_volume_ids).await;
-                Ok(SandboxesPostResponse::Status500_ServerError(
-                    Self::internal_error(&err),
-                ))
+                match err {
+                    OrchestratorError::SandboxNameConflict { name } => {
+                        Ok(SandboxesPostResponse::Status409_Conflict(Self::error(
+                            409,
+                            format!("sandbox name '{name}' is already in use"),
+                        )))
+                    }
+                    err => Ok(SandboxesPostResponse::Status500_ServerError(
+                        Self::internal_error(&err),
+                    )),
+                }
             }
         }
     }
@@ -2173,5 +2261,20 @@ mod tests {
         };
         let error = network_policy_from_update(&body).unwrap_err();
         assert!(error.to_string().contains("0.0.0.0/0"));
+    }
+
+    #[test]
+    fn sandbox_name_and_hostname_validation() {
+        assert_eq!(
+            validate_sandbox_name(Some(&"web_app-1".to_owned())).unwrap(),
+            Some("web_app-1".to_owned())
+        );
+        assert!(validate_sandbox_name(Some(&"bad/name".to_owned())).is_err());
+        assert_eq!(validate_hostname(None).unwrap(), "taskenv");
+        assert_eq!(
+            validate_hostname(Some(&"web-1.internal".to_owned())).unwrap(),
+            "web-1.internal"
+        );
+        assert!(validate_hostname(Some(&"-invalid".to_owned())).is_err());
     }
 }

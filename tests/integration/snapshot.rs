@@ -369,6 +369,7 @@ async fn persistent_snapshot_lifecycle_preserves_original_pause_resume_state() -
         let launch_config = SandboxLaunchConfig {
             sandbox_id: SandboxId::new(),
             snapshot_id: runnable.record().id.to_string(),
+            hostname: "taskenv".to_owned(),
             env_vars: None,
             network: None,
             extra_mmds: serde_json::Map::new(),
@@ -572,6 +573,7 @@ async fn randomized_snapshot_lifecycle_operations_preserve_artifact_ownership() 
                     let launch_config = SandboxLaunchConfig {
                         sandbox_id,
                         snapshot_id: runnable.record().id.to_string(),
+                        hostname: "taskenv".to_owned(),
                         env_vars: None,
                         network: None,
                         extra_mmds: serde_json::Map::new(),

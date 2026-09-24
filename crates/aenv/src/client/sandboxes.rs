@@ -1,5 +1,5 @@
 use super::{handle_status, Client};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -27,6 +27,10 @@ pub struct NewSandbox<'a> {
     #[serde(rename = "templateID")]
     pub template_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
     pub secure: bool,
     #[serde(skip_serializing_if = "Option::is_none", rename = "volumeMounts")]
@@ -36,6 +40,10 @@ pub struct NewSandbox<'a> {
 #[derive(Debug, Serialize)]
 pub struct NewColdSandbox<'a> {
     pub image: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "cpuCount")]
@@ -53,6 +61,10 @@ pub struct NewColdSandbox<'a> {
 pub struct Sandbox {
     #[serde(rename = "sandboxID")]
     pub sandbox_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub hostname: Option<String>,
     #[serde(default, rename = "envdAccessToken")]
     pub envd_access_token: Option<String>,
     #[serde(default, rename = "trafficAccessToken")]
@@ -66,8 +78,13 @@ pub struct RefreshSandbox {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct SandboxDetail {
     pub state: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub hostname: Option<String>,
     #[serde(default, rename = "envdAccessToken")]
     pub envd_access_token: Option<String>,
 }
@@ -76,6 +93,10 @@ pub struct SandboxDetail {
 pub struct ListedSandbox {
     #[serde(rename = "sandboxID")]
     pub sandbox_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub hostname: Option<String>,
     #[serde(rename = "templateID")]
     pub template_id: String,
     #[serde(default)]
@@ -99,10 +120,14 @@ impl Client {
         &self,
         template_id: &str,
         timeout: Option<u32>,
+        name: Option<&str>,
+        hostname: Option<&str>,
         volume_mounts: Option<HashMap<String, String>>,
     ) -> Result<Sandbox> {
         let body = NewSandbox {
             template_id,
+            name,
+            hostname,
             timeout,
             secure: true,
             volume_mounts: volume_mounts_request(volume_mounts),
@@ -117,6 +142,8 @@ impl Client {
         &self,
         image: &str,
         timeout: Option<u32>,
+        name: Option<&str>,
+        hostname: Option<&str>,
         cpu_count: Option<u32>,
         memory_mb: Option<u32>,
         disk_size_mb: Option<u32>,
@@ -124,6 +151,8 @@ impl Client {
     ) -> Result<Sandbox> {
         let body = NewColdSandbox {
             image,
+            name,
+            hostname,
             timeout,
             cpu_count,
             memory_mb,
@@ -139,6 +168,27 @@ impl Client {
     pub fn list_sandboxes(&self) -> Result<Vec<ListedSandbox>> {
         let resp = handle_status(self.get("/v2/sandboxes").call())?;
         Ok(resp.into_json()?)
+    }
+
+    /// Resolve either a sandbox UUID or its unique human-readable name.
+    pub fn resolve_sandbox_id(&self, reference: &str) -> Result<String> {
+        let sandboxes = self.list_sandboxes()?;
+        if sandboxes
+            .iter()
+            .any(|sandbox| sandbox.sandbox_id == reference)
+        {
+            return Ok(reference.to_owned());
+        }
+        let matches = sandboxes
+            .iter()
+            .filter(|sandbox| sandbox.name.as_deref() == Some(reference))
+            .map(|sandbox| sandbox.sandbox_id.as_str())
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [sandbox_id] => Ok((*sandbox_id).to_owned()),
+            [] => bail!("sandbox '{}' not found by ID or name", reference),
+            _ => bail!("sandbox name '{}' is ambiguous", reference),
+        }
     }
 
     pub fn delete_sandbox(&self, id: &str) -> Result<()> {
@@ -209,6 +259,8 @@ mod tests {
     fn new_sandbox_serializes_template_start() {
         let body = NewSandbox {
             template_id: "base-template",
+            name: Some("web"),
+            hostname: Some("web.internal"),
             timeout: Some(300),
             secure: true,
             volume_mounts: None,
@@ -216,6 +268,8 @@ mod tests {
 
         let value = serde_json::to_value(body).unwrap();
         assert_eq!(value["templateID"], "base-template");
+        assert_eq!(value["name"], "web");
+        assert_eq!(value["hostname"], "web.internal");
         assert_eq!(value["timeout"], 300);
         assert_eq!(value["secure"], true);
         assert!(value.get("cpuCount").is_none());
@@ -226,6 +280,8 @@ mod tests {
     fn new_cold_sandbox_serializes_resource_overrides() {
         let body = NewColdSandbox {
             image: "ubuntu:24.04",
+            name: Some("cold"),
+            hostname: Some("cold.local"),
             timeout: Some(300),
             cpu_count: Some(2),
             memory_mb: Some(1024),
@@ -236,6 +292,8 @@ mod tests {
 
         let value = serde_json::to_value(body).unwrap();
         assert_eq!(value["image"], "ubuntu:24.04");
+        assert_eq!(value["name"], "cold");
+        assert_eq!(value["hostname"], "cold.local");
         assert_eq!(value["timeout"], 300);
         assert_eq!(value["cpuCount"], 2);
         assert_eq!(value["memoryMB"], 1024);

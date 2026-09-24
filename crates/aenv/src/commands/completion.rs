@@ -79,7 +79,16 @@ where
     candidates.sort_by(|left, right| left.sandbox_id.cmp(&right.sandbox_id));
     candidates
         .into_iter()
-        .map(|sandbox| CompletionCandidate::new(sandbox.sandbox_id))
+        .flat_map(|sandbox| {
+            let sandbox_id = sandbox.sandbox_id;
+            match sandbox.name {
+                Some(name) => vec![
+                    CompletionCandidate::new(sandbox_id),
+                    CompletionCandidate::new(name),
+                ],
+                None => vec![CompletionCandidate::new(sandbox_id)],
+            }
+        })
         .collect()
 }
 
@@ -142,6 +151,8 @@ mod tests {
     fn sandbox(id: &str, state: &str) -> ListedSandbox {
         ListedSandbox {
             sandbox_id: id.to_string(),
+            name: None,
+            hostname: None,
             template_id: "template".to_string(),
             alias: None,
             state: Some(state.to_string()),

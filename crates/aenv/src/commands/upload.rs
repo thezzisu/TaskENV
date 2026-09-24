@@ -31,6 +31,7 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 async fn run_async(client: Client, args: Args) -> Result<()> {
+    let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
     let metadata = std::fs::symlink_metadata(&args.local_path)
         .with_context(|| format!("reading local path {}", args.local_path.display()))?;
     if metadata.file_type().is_symlink() {
@@ -40,7 +41,7 @@ async fn run_async(client: Client, args: Args) -> Result<()> {
         );
     }
 
-    let files = client.files(&args.sandbox_id)?;
+    let files = client.files(&sandbox_id)?;
     if metadata.is_file() {
         let remote_path = resolve_remote_file_path(&args.local_path, &args.remote_path)?;
         let progress = TransferProgress::new("Uploading", metadata.len())?;
@@ -62,7 +63,7 @@ async fn run_async(client: Client, args: Args) -> Result<()> {
         println!(
             "Uploaded {} to {}:{}",
             args.local_path.display(),
-            args.sandbox_id,
+            sandbox_id,
             remote_path
         );
         return Ok(());
@@ -120,7 +121,7 @@ async fn run_async(client: Client, args: Args) -> Result<()> {
     println!(
         "Uploaded directory {} to {}:{}",
         args.local_path.display(),
-        args.sandbox_id,
+        sandbox_id,
         remote_root
     );
     Ok(())

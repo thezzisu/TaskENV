@@ -165,6 +165,8 @@ impl ApiImpl {
             .create_template_builder(
                 SandboxId::parse_str(id)?,
                 CreateSandboxRequest {
+                    name: None,
+                    hostname: "taskenv".to_owned(),
                     source: SandboxLaunchSource::Snapshot(Box::new(snapshot)),
                     extra_drives: drives,
                     extra_drives_in_snapshot: false,

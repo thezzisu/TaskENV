@@ -164,11 +164,13 @@ enable `taskenv-display.service` and `taskenv-deskd.service` in the desktop user
 manager. All executable agent code and units remain on the same tools drive.
 Selkies, Xfce, Python and browser packages belong to the desktop rootfs.
 
-`pivot-init` fixes every guest hostname to `taskenv` before starting the user
-init. The host lifecycle repeats the same operation after envd initialization,
-which also covers older tools drives and paused/resumed snapshots. Both the
-kernel hostname and `/etc/hostname` are updated because Ubuntu systemd can
-otherwise restore the rootfs file during boot.
+`pivot-init` applies the default guest hostname `taskenv` before starting the
+user init. The host lifecycle applies the requested per-sandbox hostname after
+envd initialization, which also covers older tools drives and paused/resumed
+snapshots. The value is supplied by the control plane at launch; a process
+inside the VM may change it later. Both the kernel hostname and `/etc/hostname`
+are updated because Ubuntu systemd can otherwise restore the rootfs file during
+boot.
 
 The envd execution-context patch in `envd/` is compiled and unit-tested here.
 Desktop sources live in `deskd/`. There are no separate agent Debian packages,

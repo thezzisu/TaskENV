@@ -796,6 +796,11 @@ impl FirecrackerSandbox {
         );
         snapshot_config.common.envd_access_token = launch_config.envd_access_token.clone();
         snapshot_config.common.network_policy = launch_config.network.clone();
+        snapshot_config.common.hostname = if launch_config.hostname.is_empty() {
+            "taskenv".to_owned()
+        } else {
+            launch_config.hostname.clone()
+        };
 
         // Launch-provided custom config overrides the value persisted in the
         // source snapshot; otherwise inherit the snapshot's.
@@ -875,7 +880,8 @@ impl FirecrackerSandbox {
             .await?;
 
         // Memory restore skips pivot-init, including when using older tools.
-        Self::set_guest_hostname(envd_instance.clone()).await?;
+        Self::set_guest_hostname(envd_instance.clone(), self.launch.common().hostname.clone())
+            .await?;
 
         // The snapshot already carries mount state for its existing drives.
         // Only drives newly supplied for this launch need a guest-side mount.
@@ -890,7 +896,8 @@ impl FirecrackerSandbox {
         Ok(())
     }
 
-    async fn set_guest_hostname(envd: EnvdInstance) -> Result<()> {
+    async fn set_guest_hostname(envd: EnvdInstance, hostname: String) -> Result<()> {
+        let error_hostname = hostname.clone();
         let output = tokio::time::timeout(std::time::Duration::from_secs(15), async move {
             Executor::new(envd)
                 .with_root_user()
@@ -900,6 +907,8 @@ impl FirecrackerSandbox {
                         "sh",
                         "-c",
                         include_str!("../../../tools-image/set-hostname"),
+                        "--",
+                        &hostname,
                     ],
                     &crate::sandbox::ProcessOpts::default()
                         .with_cwd("/")
@@ -909,10 +918,11 @@ impl FirecrackerSandbox {
         })
         .await
         .context("setting guest hostname timed out")?
-        .context("set guest hostname to taskenv")?;
+        .with_context(|| format!("set guest hostname to {error_hostname}"))?;
         anyhow::ensure!(
             output.exit_code == 0,
-            "setting guest hostname to taskenv failed (exit {}): {}",
+            "setting guest hostname to {} failed (exit {}): {}",
+            error_hostname,
             output.exit_code,
             output.stderr.trim()
         );
@@ -3165,6 +3175,7 @@ mod tests {
             ])),
             sandbox_id: SandboxId::new(),
             snapshot_id: "tpl-test".to_string(),
+            hostname: "taskenv".to_string(),
             network: None,
             extra_mmds: serde_json::Map::new(),
             extra_drives: Vec::new(),

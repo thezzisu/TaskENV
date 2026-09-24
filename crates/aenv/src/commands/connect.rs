@@ -55,16 +55,17 @@ pub struct Args {
 
 pub fn run(args: Args) -> Result<()> {
     let client = Client::from_env()?;
+    let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
     let rt = super::tokio_rt()?;
     if args.gui {
         return rt.block_on(super::gui::attach(
             client,
-            args.sandbox_id,
+            sandbox_id,
             args.gui_port,
             !args.no_open,
         ));
     }
-    let code = rt.block_on(attach(&client, &args.sandbox_id))?;
+    let code = rt.block_on(attach(&client, &sandbox_id))?;
     std::process::exit(code);
 }
 

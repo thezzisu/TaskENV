@@ -41,7 +41,10 @@ enum Sub {
 pub fn run(args: Args) -> Result<()> {
     let client = Client::from_env()?;
     match args.cmd {
-        Sub::Create { sandbox_id, name } => create(&client, &sandbox_id, name.as_deref()),
+        Sub::Create { sandbox_id, name } => {
+            let sandbox_id = client.resolve_sandbox_id(&sandbox_id)?;
+            create(&client, &sandbox_id, name.as_deref())
+        }
         Sub::List { sandbox_id, output } => {
             list(&client, sandbox_id.as_deref(), output::resolve(output))
         }

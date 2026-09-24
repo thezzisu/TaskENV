@@ -22,14 +22,15 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 async fn run_async(client: Client, args: Args) -> Result<i32> {
+    let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
     let mut cmd_iter = args.command.into_iter();
     let cmd = cmd_iter
         .next()
         .ok_or_else(|| anyhow::anyhow!("missing command"))?;
     let rest: Vec<String> = cmd_iter.collect();
 
-    let sandbox = client.get_sandbox(&args.sandbox_id)?;
-    let transport = client.transport(&args.sandbox_id, sandbox.envd_access_token.as_deref())?;
+    let sandbox = client.get_sandbox(&sandbox_id)?;
+    let transport = client.transport(&sandbox_id, sandbox.envd_access_token.as_deref())?;
     let req = build_start_request(StartOpts {
         cmd: &cmd,
         args: rest,

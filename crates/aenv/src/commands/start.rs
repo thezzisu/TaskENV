@@ -25,6 +25,12 @@ pub struct Args {
     /// Sandbox TTL in seconds
     #[arg(long, default_value_t = super::DEFAULT_TIMEOUT_SECS)]
     timeout: u32,
+    /// Human-readable sandbox name
+    #[arg(long)]
+    name: Option<String>,
+    /// Hostname to set inside the sandbox
+    #[arg(long)]
+    hostname: Option<String>,
     #[command(flatten)]
     resources: super::CpuMemoryArgs,
     /// Root filesystem size in MiB for cold-start sandboxes (must be divisible by 1024)
@@ -55,6 +61,8 @@ pub fn run(args: Args) -> Result<()> {
         client.create_cold_sandbox(
             &args.target,
             Some(args.timeout),
+            args.name.as_deref(),
+            args.hostname.as_deref(),
             args.resources.cpu_count,
             args.resources.memory_mb,
             args.disk_size_mb,
@@ -64,7 +72,13 @@ pub fn run(args: Args) -> Result<()> {
         if args.resources.is_set() || args.disk_size_mb.is_some() {
             anyhow::bail!("--cpu-count, --memory-mb, and --disk-size-mb require --cold");
         }
-        client.create_sandbox(&args.target, Some(args.timeout), volume_mounts)?
+        client.create_sandbox(
+            &args.target,
+            Some(args.timeout),
+            args.name.as_deref(),
+            args.hostname.as_deref(),
+            volume_mounts,
+        )?
     };
     let sandbox_id = sandbox.sandbox_id;
 
@@ -73,7 +87,17 @@ pub fn run(args: Args) -> Result<()> {
         return Ok(());
     }
 
-    println!("Started sandbox {}", sandbox_id);
+    match (sandbox.name.as_deref(), sandbox.hostname.as_deref()) {
+        (Some(name), Some(hostname)) => println!(
+            "Started sandbox {} (name={}, hostname={})",
+            sandbox_id, name, hostname
+        ),
+        (Some(name), None) => println!("Started sandbox {} (name={})", sandbox_id, name),
+        (None, Some(hostname)) => {
+            println!("Started sandbox {} (hostname={})", sandbox_id, hostname)
+        }
+        (None, None) => println!("Started sandbox {}", sandbox_id),
+    }
     let rt = super::tokio_rt()?;
     rt.block_on(wait_for_envd(
         &client,

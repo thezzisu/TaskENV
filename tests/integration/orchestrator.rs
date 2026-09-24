@@ -76,6 +76,8 @@ async fn orchestrator_lifecycle() -> Result<()> {
 
         let request = CreateSandboxRequest {
             source: SandboxLaunchSource::Snapshot(Box::new(runnable)),
+            name: None,
+            hostname: "taskenv".to_owned(),
             extra_drives: Vec::new(),
             extra_drives_in_snapshot: false,
             timeout: Some(Duration::from_secs(30)),
@@ -245,6 +247,8 @@ async fn orchestrator_capture_snapshot_can_be_published_and_relaunched() -> Resu
         let created = orchestrator
             .create_sandbox(CreateSandboxRequest {
                 source: SandboxLaunchSource::Snapshot(Box::new(runnable)),
+                name: None,
+                hostname: "taskenv".to_owned(),
                 extra_drives: Vec::new(),
                 extra_drives_in_snapshot: false,
                 timeout: Some(Duration::from_secs(30)),
@@ -345,6 +349,8 @@ async fn orchestrator_capture_snapshot_can_be_published_and_relaunched() -> Resu
         let relaunched = orchestrator
             .create_sandbox(CreateSandboxRequest {
                 source: SandboxLaunchSource::Snapshot(Box::new(captured_runnable)),
+                name: None,
+                hostname: "taskenv".to_owned(),
                 extra_drives: Vec::new(),
                 extra_drives_in_snapshot: false,
                 timeout: Some(Duration::from_secs(30)),

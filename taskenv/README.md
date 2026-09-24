@@ -47,9 +47,17 @@ The rootfs contains OS/GUI dependencies and service enablement links, with no se
 `/agentenv/deskd status|check` reports readiness; `connect-info` supplies the private versioned endpoint/authentication response. `start|stop|restart` controls the stream through systemd. Stopping the stream leaves the display available to agents. `systemctl --user restart taskenv-display` explicitly restarts the graphical session and may close applications. GUI failure does not stop envd.
 
 ```bash
-taskenv start taskenv-ubuntu-24-04-dev-desktop --timeout 14400 -d
-taskenv connect <sandbox-id> --gui
+taskenv start taskenv-ubuntu-24-04-dev-desktop \
+  --name web-test --hostname web-test --timeout 14400 -d
+taskenv connect web-test --gui
+taskenv exec web-test -- hostname
 ```
+
+Sandbox names are unique human-readable selectors stored by the control plane;
+every command that accepts a sandbox ID also accepts its name. `taskenv list`
+shows both values. `--hostname` sets the guest hostname during startup and is
+returned in sandbox metadata; a process inside the VM may change its hostname
+later, and TaskENV does not reset that change during the running session.
 
 The CLI opens a random loopback port for the duration of the connection. Ctrl-C removes it. Guest port 6900 serves Selkies directly; there is no nginx, FileBrowser, extra GUI landing service, or permanent host GUI listener. Existing `cn` is unchanged.
 

@@ -83,6 +83,9 @@ pub enum OrchestratorError {
         operation: SandboxOperation,
     },
 
+    #[error("sandbox name '{name}' is already in use")]
+    SandboxNameConflict { name: String },
+
     #[error("store operation failed: {0}")]
     StoreOperationFailed(#[source] store::StoreError),
 

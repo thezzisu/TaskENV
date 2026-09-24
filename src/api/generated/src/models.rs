@@ -1859,6 +1859,18 @@ pub struct ListedSandbox {
     #[validate(custom(function = "check_xss_string"))]
     pub sandbox_id: String,
 
+    /// Optional human-readable sandbox name. Names are unique within the deployment.
+    #[serde(rename = "name")]
+    #[validate(length(max = 128), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Hostname requested inside the sandbox. Defaults to taskenv.
+    #[serde(rename = "hostname")]
+    #[validate(length(max = 253), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+
     /// Identifier of the client
     #[serde(rename = "clientID")]
     #[validate(custom(function = "check_xss_string"))]
@@ -1925,6 +1937,8 @@ impl ListedSandbox {
             template_id,
             alias: None,
             sandbox_id,
+            name: None,
+            hostname: None,
             client_id,
             started_at,
             end_at,
@@ -1952,6 +1966,12 @@ impl std::fmt::Display for ListedSandbox {
                 .map(|alias| ["alias".to_string(), alias.to_string()].join(",")),
             Some("sandboxID".to_string()),
             Some(self.sandbox_id.to_string()),
+            self.name
+                .as_ref()
+                .map(|name| ["name".to_string(), name.to_string()].join(",")),
+            self.hostname
+                .as_ref()
+                .map(|hostname| ["hostname".to_string(), hostname.to_string()].join(",")),
             Some("clientID".to_string()),
             Some(self.client_id.to_string()),
             // Skipping startedAt in query parameter serialization
@@ -1993,6 +2013,8 @@ impl std::str::FromStr for ListedSandbox {
             pub template_id: Vec<String>,
             pub alias: Vec<String>,
             pub sandbox_id: Vec<String>,
+            pub name: Vec<String>,
+            pub hostname: Vec<String>,
             pub client_id: Vec<String>,
             pub started_at: Vec<chrono::DateTime<chrono::Utc>>,
             pub end_at: Vec<chrono::DateTime<chrono::Utc>>,
@@ -2034,6 +2056,14 @@ impl std::str::FromStr for ListedSandbox {
                     ),
                     #[allow(clippy::redundant_clone)]
                     "sandboxID" => intermediate_rep.sandbox_id.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "name" => intermediate_rep.name.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "hostname" => intermediate_rep.hostname.push(
                         <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
                     ),
                     #[allow(clippy::redundant_clone)]
@@ -2108,6 +2138,8 @@ impl std::str::FromStr for ListedSandbox {
                 .into_iter()
                 .next()
                 .ok_or_else(|| "sandboxID missing in ListedSandbox".to_string())?,
+            name: intermediate_rep.name.into_iter().next(),
+            hostname: intermediate_rep.hostname.into_iter().next(),
             client_id: intermediate_rep
                 .client_id
                 .into_iter()
@@ -2570,7 +2602,19 @@ pub struct NewColdSandbox {
     #[validate(custom(function = "check_xss_string"))]
     pub image: String,
 
-    /// Time to live for the sandbox in seconds.
+    /// Optional human-readable sandbox name. Names are unique within the deployment.
+    #[serde(rename = "name")]
+    #[validate(length(max = 128), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Hostname to set inside the sandbox. Defaults to taskenv.
+    #[serde(rename = "hostname")]
+    #[validate(length(max = 253), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+
+    /// Time to live for the sandbox in seconds. Set to 0 for no expiration.
     #[serde(rename = "timeout")]
     #[validate(range(min = 0u32))]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2658,6 +2702,8 @@ impl NewColdSandbox {
     pub fn new(image: String) -> NewColdSandbox {
         NewColdSandbox {
             image,
+            name: None,
+            hostname: None,
             timeout: Some(15),
             auto_pause: Some(true),
             auto_resume: None,
@@ -2685,6 +2731,12 @@ impl std::fmt::Display for NewColdSandbox {
         let params: Vec<Option<String>> = vec![
             Some("image".to_string()),
             Some(self.image.to_string()),
+            self.name
+                .as_ref()
+                .map(|name| ["name".to_string(), name.to_string()].join(",")),
+            self.hostname
+                .as_ref()
+                .map(|hostname| ["hostname".to_string(), hostname.to_string()].join(",")),
             self.timeout
                 .as_ref()
                 .map(|timeout| ["timeout".to_string(), timeout.to_string()].join(",")),
@@ -2749,6 +2801,8 @@ impl std::str::FromStr for NewColdSandbox {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub image: Vec<String>,
+            pub name: Vec<String>,
+            pub hostname: Vec<String>,
             pub timeout: Vec<u32>,
             pub auto_pause: Vec<bool>,
             pub auto_resume: Vec<models::SandboxAutoResumeConfig>,
@@ -2788,6 +2842,14 @@ impl std::str::FromStr for NewColdSandbox {
                 match key {
                     #[allow(clippy::redundant_clone)]
                     "image" => intermediate_rep.image.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "name" => intermediate_rep.name.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "hostname" => intermediate_rep.hostname.push(
                         <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
                     ),
                     #[allow(clippy::redundant_clone)]
@@ -2881,6 +2943,8 @@ impl std::str::FromStr for NewColdSandbox {
                 .into_iter()
                 .next()
                 .ok_or_else(|| "image missing in NewColdSandbox".to_string())?,
+            name: intermediate_rep.name.into_iter().next(),
+            hostname: intermediate_rep.hostname.into_iter().next(),
             timeout: intermediate_rep.timeout.into_iter().next(),
             auto_pause: intermediate_rep.auto_pause.into_iter().next(),
             auto_resume: intermediate_rep.auto_resume.into_iter().next(),
@@ -2950,7 +3014,19 @@ pub struct NewSandbox {
     #[validate(custom(function = "check_xss_string"))]
     pub template_id: String,
 
-    /// Time to live for the sandbox in seconds.
+    /// Optional human-readable sandbox name. Names are unique within the deployment.
+    #[serde(rename = "name")]
+    #[validate(length(max = 128), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Hostname to set inside the sandbox. Defaults to taskenv.
+    #[serde(rename = "hostname")]
+    #[validate(length(max = 253), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+
+    /// Time to live for the sandbox in seconds. Set to 0 for no expiration.
     #[serde(rename = "timeout")]
     #[validate(range(min = 0u32))]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3015,6 +3091,8 @@ impl NewSandbox {
     pub fn new(template_id: String) -> NewSandbox {
         NewSandbox {
             template_id,
+            name: None,
+            hostname: None,
             timeout: Some(15),
             auto_pause: Some(true),
             auto_resume: None,
@@ -3038,6 +3116,12 @@ impl std::fmt::Display for NewSandbox {
         let params: Vec<Option<String>> = vec![
             Some("templateID".to_string()),
             Some(self.template_id.to_string()),
+            self.name
+                .as_ref()
+                .map(|name| ["name".to_string(), name.to_string()].join(",")),
+            self.hostname
+                .as_ref()
+                .map(|hostname| ["hostname".to_string(), hostname.to_string()].join(",")),
             self.timeout
                 .as_ref()
                 .map(|timeout| ["timeout".to_string(), timeout.to_string()].join(",")),
@@ -3092,6 +3176,8 @@ impl std::str::FromStr for NewSandbox {
         #[allow(dead_code)]
         struct IntermediateRep {
             pub template_id: Vec<String>,
+            pub name: Vec<String>,
+            pub hostname: Vec<String>,
             pub timeout: Vec<u32>,
             pub auto_pause: Vec<bool>,
             pub auto_resume: Vec<models::SandboxAutoResumeConfig>,
@@ -3127,6 +3213,14 @@ impl std::str::FromStr for NewSandbox {
                 match key {
                     #[allow(clippy::redundant_clone)]
                     "templateID" => intermediate_rep.template_id.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "name" => intermediate_rep.name.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "hostname" => intermediate_rep.hostname.push(
                         <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
                     ),
                     #[allow(clippy::redundant_clone)]
@@ -3204,6 +3298,8 @@ impl std::str::FromStr for NewSandbox {
                 .into_iter()
                 .next()
                 .ok_or_else(|| "templateID missing in NewSandbox".to_string())?,
+            name: intermediate_rep.name.into_iter().next(),
+            hostname: intermediate_rep.hostname.into_iter().next(),
             timeout: intermediate_rep.timeout.into_iter().next(),
             auto_pause: intermediate_rep.auto_pause.into_iter().next(),
             auto_resume: intermediate_rep.auto_resume.into_iter().next(),
@@ -4561,7 +4657,7 @@ impl std::str::FromStr for OrderDirection {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, validator::Validate)]
 #[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
 pub struct ResumedSandbox {
-    /// Time to live for the sandbox in seconds.
+    /// Time to live for the sandbox in seconds. Set to 0 for no expiration.
     #[serde(rename = "timeout")]
     #[validate(range(min = 0u32))]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -4705,6 +4801,18 @@ pub struct Sandbox {
     #[validate(custom(function = "check_xss_string"))]
     pub sandbox_id: String,
 
+    /// Optional human-readable sandbox name. Names are unique within the deployment.
+    #[serde(rename = "name")]
+    #[validate(length(max = 128), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Hostname requested inside the sandbox. Defaults to taskenv.
+    #[serde(rename = "hostname")]
+    #[validate(length(max = 253), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+
     /// Alias of the template
     #[serde(rename = "alias")]
     #[validate(custom(function = "check_xss_string"))]
@@ -4753,6 +4861,8 @@ impl Sandbox {
         Sandbox {
             template_id,
             sandbox_id,
+            name: None,
+            hostname: None,
             alias: None,
             client_id,
             envd_version,
@@ -4773,6 +4883,12 @@ impl std::fmt::Display for Sandbox {
             Some(self.template_id.to_string()),
             Some("sandboxID".to_string()),
             Some(self.sandbox_id.to_string()),
+            self.name
+                .as_ref()
+                .map(|name| ["name".to_string(), name.to_string()].join(",")),
+            self.hostname
+                .as_ref()
+                .map(|hostname| ["hostname".to_string(), hostname.to_string()].join(",")),
             self.alias
                 .as_ref()
                 .map(|alias| ["alias".to_string(), alias.to_string()].join(",")),
@@ -4826,6 +4942,8 @@ impl std::str::FromStr for Sandbox {
         struct IntermediateRep {
             pub template_id: Vec<String>,
             pub sandbox_id: Vec<String>,
+            pub name: Vec<String>,
+            pub hostname: Vec<String>,
             pub alias: Vec<String>,
             pub client_id: Vec<String>,
             pub envd_version: Vec<String>,
@@ -4859,6 +4977,14 @@ impl std::str::FromStr for Sandbox {
                     ),
                     #[allow(clippy::redundant_clone)]
                     "sandboxID" => intermediate_rep.sandbox_id.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "name" => intermediate_rep.name.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "hostname" => intermediate_rep.hostname.push(
                         <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
                     ),
                     #[allow(clippy::redundant_clone)]
@@ -4913,6 +5039,8 @@ impl std::str::FromStr for Sandbox {
                 .into_iter()
                 .next()
                 .ok_or_else(|| "sandboxID missing in Sandbox".to_string())?,
+            name: intermediate_rep.name.into_iter().next(),
+            hostname: intermediate_rep.hostname.into_iter().next(),
             alias: intermediate_rep.alias.into_iter().next(),
             client_id: intermediate_rep
                 .client_id
@@ -5166,6 +5294,18 @@ pub struct SandboxDetail {
     #[validate(custom(function = "check_xss_string"))]
     pub sandbox_id: String,
 
+    /// Optional human-readable sandbox name. Names are unique within the deployment.
+    #[serde(rename = "name")]
+    #[validate(length(max = 128), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Hostname requested inside the sandbox. Defaults to taskenv.
+    #[serde(rename = "hostname")]
+    #[validate(length(max = 253), custom(function = "check_xss_string"))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+
     /// Identifier of the client
     #[serde(rename = "clientID")]
     #[validate(custom(function = "check_xss_string"))]
@@ -5262,6 +5402,8 @@ impl SandboxDetail {
             template_id,
             alias: None,
             sandbox_id,
+            name: None,
+            hostname: None,
             client_id,
             started_at,
             end_at,
@@ -5294,6 +5436,12 @@ impl std::fmt::Display for SandboxDetail {
                 .map(|alias| ["alias".to_string(), alias.to_string()].join(",")),
             Some("sandboxID".to_string()),
             Some(self.sandbox_id.to_string()),
+            self.name
+                .as_ref()
+                .map(|name| ["name".to_string(), name.to_string()].join(",")),
+            self.hostname
+                .as_ref()
+                .map(|hostname| ["hostname".to_string(), hostname.to_string()].join(",")),
             Some("clientID".to_string()),
             Some(self.client_id.to_string()),
             // Skipping startedAt in query parameter serialization
@@ -5363,6 +5511,8 @@ impl std::str::FromStr for SandboxDetail {
             pub template_id: Vec<String>,
             pub alias: Vec<String>,
             pub sandbox_id: Vec<String>,
+            pub name: Vec<String>,
+            pub hostname: Vec<String>,
             pub client_id: Vec<String>,
             pub started_at: Vec<chrono::DateTime<chrono::Utc>>,
             pub end_at: Vec<chrono::DateTime<chrono::Utc>>,
@@ -5409,6 +5559,14 @@ impl std::str::FromStr for SandboxDetail {
                     ),
                     #[allow(clippy::redundant_clone)]
                     "sandboxID" => intermediate_rep.sandbox_id.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "name" => intermediate_rep.name.push(
+                        <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
+                    ),
+                    #[allow(clippy::redundant_clone)]
+                    "hostname" => intermediate_rep.hostname.push(
                         <String as std::str::FromStr>::from_str(val).map_err(|x| x.to_string())?,
                     ),
                     #[allow(clippy::redundant_clone)]
@@ -5505,6 +5663,8 @@ impl std::str::FromStr for SandboxDetail {
                 .into_iter()
                 .next()
                 .ok_or_else(|| "sandboxID missing in SandboxDetail".to_string())?,
+            name: intermediate_rep.name.into_iter().next(),
+            hostname: intermediate_rep.hostname.into_iter().next(),
             client_id: intermediate_rep
                 .client_id
                 .into_iter()

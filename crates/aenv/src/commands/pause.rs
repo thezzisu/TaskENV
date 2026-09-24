@@ -10,7 +10,8 @@ pub struct Args {
 
 pub fn run(args: Args) -> Result<()> {
     let client = Client::from_env()?;
-    client.pause_sandbox(&args.sandbox_id)?;
+    let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
+    client.pause_sandbox(&sandbox_id)?;
     println!("Paused {}", args.sandbox_id);
     Ok(())
 }

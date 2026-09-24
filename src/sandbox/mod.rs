@@ -56,12 +56,14 @@ pub struct FreshSandboxBuildSpec {
 ///
 /// Carries launch-time inputs from upper layers (for example orchestrator)
 /// into backend construction.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SandboxLaunchConfig {
     /// Stable sandbox identity
     pub sandbox_id: SandboxId,
     /// Snapshot/template identity
     pub snapshot_id: String,
+    /// Hostname to apply inside the guest after envd is ready.
+    pub hostname: String,
     /// One-off environment variable overrides to apply on top of snapshot defaults.
     pub env_vars: Option<HashMap<String, String>>,
     /// Per-sandbox egress policy.
@@ -88,6 +90,7 @@ impl SandboxLaunchConfig {
         Self {
             sandbox_id,
             snapshot_id: snapshot_id.into(),
+            hostname: "taskenv".to_owned(),
             env_vars: None,
             network: None,
             extra_mmds: serde_json::Map::new(),
@@ -104,5 +107,11 @@ impl SandboxLaunchConfig {
                 .insert("imageConfigs".to_string(), image_configs.to_value());
         }
         self
+    }
+}
+
+impl Default for SandboxLaunchConfig {
+    fn default() -> Self {
+        Self::new(SandboxId::new(), "unknown")
     }
 }

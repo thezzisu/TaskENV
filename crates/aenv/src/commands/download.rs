@@ -40,7 +40,8 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 async fn run_async(client: Client, args: Args) -> Result<()> {
-    let files = client.files(&args.sandbox_id)?;
+    let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
+    let files = client.files(&sandbox_id)?;
     let remote_entry = files.stat(&args.remote_path, args.user.as_deref()).await?;
     let Some(remote_entry) = remote_entry else {
         bail!("remote path does not exist: {}", args.remote_path);
@@ -69,7 +70,7 @@ async fn run_async(client: Client, args: Args) -> Result<()> {
         result?;
         println!(
             "Downloaded {}:{} to {}",
-            args.sandbox_id,
+            sandbox_id,
             args.remote_path,
             local_path.display()
         );
@@ -133,7 +134,7 @@ async fn run_async(client: Client, args: Args) -> Result<()> {
 
     println!(
         "Downloaded directory {}:{} to {}",
-        args.sandbox_id,
+        sandbox_id,
         args.remote_path,
         local_root.display()
     );

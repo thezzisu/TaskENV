@@ -2,18 +2,27 @@
 # Used at boot and by the host after restoring older snapshots.
 set -eu
 BB=/agentenv/bin/busybox
+HOSTNAME="${1:-taskenv}"
+
+case "$HOSTNAME" in
+    ''|*[!A-Za-z0-9.-]*|.*|-*|*.-|*.)
+        echo "invalid hostname: $HOSTNAME" >&2
+        exit 2
+        ;;
+esac
 
 $BB mkdir -p /etc
-if [ -L /etc/hostname ] || [ "$($BB cat /etc/hostname 2>/dev/null)" != taskenv ]; then
+if [ -L /etc/hostname ] || [ "$($BB cat /etc/hostname 2>/dev/null)" != "$HOSTNAME" ]; then
     $BB rm -f /etc/hostname
-    printf '%s\n' taskenv > /etc/hostname
+    printf '%s\n' "$HOSTNAME" > /etc/hostname
     $BB chmod 0644 /etc/hostname
 fi
-$BB hostname taskenv
+$BB hostname "$HOSTNAME"
 
 # Resolve the guest's own name locally, including images without nss-myhostname.
-if ! $BB grep -qxF '127.0.1.1 taskenv' /etc/hosts 2>/dev/null; then
-    printf '\n127.0.1.1 taskenv\n' >> /etc/hosts
+$BB sed -i '/^[[:space:]]*127\.0\.1\.1[[:space:]]\+taskenv[[:space:]]*$/d' /etc/hosts 2>/dev/null || true
+if ! $BB grep -qxF "127.0.1.1 $HOSTNAME" /etc/hosts 2>/dev/null; then
+    printf '\n127.0.1.1 %s\n' "$HOSTNAME" >> /etc/hosts
 fi
 
 # Older desktop snapshots created the Xvfb cookie before the hostname fix.
@@ -23,7 +32,7 @@ if [ -f /home/ubuntu/.Xauthority ] && command -v xauth >/dev/null 2>&1; then
     entry="$(xauth -f /home/ubuntu/.Xauthority list 2>/dev/null | $BB head -n 1 || true)"
     set -- $entry
     if [ "$#" -ge 3 ] && [ -n "$3" ]; then
-        xauth -f /home/ubuntu/.Xauthority add taskenv/unix:1 MIT-MAGIC-COOKIE-1 "$3" 2>/dev/null || true
+        xauth -f /home/ubuntu/.Xauthority add "$HOSTNAME/unix:1" MIT-MAGIC-COOKIE-1 "$3" 2>/dev/null || true
     fi
     $BB chown ubuntu:ubuntu /home/ubuntu/.Xauthority 2>/dev/null || true
 fi

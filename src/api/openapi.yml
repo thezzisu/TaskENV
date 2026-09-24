@@ -421,6 +421,14 @@ components:
         sandboxID:
           type: string
           description: Identifier of the sandbox
+        name:
+          type: string
+          maxLength: 128
+          description: Optional human-readable sandbox name. Names are unique within the deployment.
+        hostname:
+          type: string
+          maxLength: 253
+          description: Hostname requested inside the sandbox. Defaults to taskenv.
         alias:
           type: string
           description: Alias of the template
@@ -464,6 +472,14 @@ components:
         sandboxID:
           type: string
           description: Identifier of the sandbox
+        name:
+          type: string
+          maxLength: 128
+          description: Optional human-readable sandbox name. Names are unique within the deployment.
+        hostname:
+          type: string
+          maxLength: 253
+          description: Hostname requested inside the sandbox. Defaults to taskenv.
         clientID:
           type: string
           deprecated: true
@@ -530,6 +546,14 @@ components:
         sandboxID:
           type: string
           description: Identifier of the sandbox
+        name:
+          type: string
+          maxLength: 128
+          description: Optional human-readable sandbox name. Names are unique within the deployment.
+        hostname:
+          type: string
+          maxLength: 253
+          description: Hostname requested inside the sandbox. Defaults to taskenv.
         clientID:
           type: string
           deprecated: true
@@ -569,6 +593,14 @@ components:
             Identifier of the required template/snapshot. Use
             POST /sandboxes-cold to create a sandbox directly from an external
             OCI image.
+        name:
+          type: string
+          maxLength: 128
+          description: Optional human-readable sandbox name. Names are unique within the deployment.
+        hostname:
+          type: string
+          maxLength: 253
+          description: Hostname to set inside the sandbox. Defaults to taskenv.
         timeout:
           type: integer
           format: int32
@@ -623,6 +655,14 @@ components:
             Explicit external OCI image reference to use as the sandbox rootfs.
             Cold starts may pull and convert OCI layers on a cache miss and can
             take tens of seconds.
+        name:
+          type: string
+          maxLength: 128
+          description: Optional human-readable sandbox name. Names are unique within the deployment.
+        hostname:
+          type: string
+          maxLength: 253
+          description: Hostname to set inside the sandbox. Defaults to taskenv.
         timeout:
           type: integer
           format: int32

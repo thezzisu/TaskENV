@@ -12,7 +12,8 @@ pub struct Args {
 
 pub fn run(args: Args) -> Result<()> {
     let client = Client::from_env()?;
-    client.set_timeout(&args.sandbox_id, args.seconds)?;
+    let sandbox_id = client.resolve_sandbox_id(&args.sandbox_id)?;
+    client.set_timeout(&sandbox_id, args.seconds)?;
     println!("Timeout for {} set to {}s", args.sandbox_id, args.seconds);
     Ok(())
 }

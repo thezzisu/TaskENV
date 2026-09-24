@@ -452,6 +452,8 @@ where
 
         let CreateSandboxRequest {
             source,
+            name,
+            hostname,
             timeout,
             timeout_action,
             user_metadata,
@@ -464,6 +466,19 @@ where
             extra_drives: launch_extra_drives,
             extra_drives_in_snapshot,
         } = request;
+        if let Some(name) = name.as_deref() {
+            if self
+                .store
+                .list()
+                .await?
+                .iter()
+                .any(|metadata| metadata.name.as_deref() == Some(name))
+            {
+                return Err(OrchestratorError::SandboxNameConflict {
+                    name: name.to_owned(),
+                });
+            }
+        }
         let envd_access_token = secure.then(|| self.access_tokens.generate(sandbox_id));
         info!(timeout = ?timeout, "creating sandbox");
 
@@ -495,6 +510,7 @@ where
                 let launch_config = SandboxLaunchConfig {
                     sandbox_id,
                     snapshot_id: record.id.to_string(),
+                    hostname: hostname.clone(),
                     env_vars,
                     network: network_policy.runtime_policy(),
                     extra_mmds,
@@ -506,6 +522,8 @@ where
 
                 let transitional_metadata = SandboxMetadata {
                     id: sandbox_id,
+                    name: name.clone(),
+                    hostname: hostname.clone(),
                     template_builder,
                     snapshot_id: record.id.to_string(),
                     snapshot_alias: record.alias.as_ref().map(ToString::to_string),
@@ -558,6 +576,7 @@ where
                 let launch_config = SandboxLaunchConfig {
                     sandbox_id,
                     snapshot_id: image_ref.clone(),
+                    hostname: hostname.clone(),
                     env_vars,
                     network: network_policy.runtime_policy(),
                     extra_mmds,
@@ -576,6 +595,8 @@ where
 
                 let transitional_metadata = SandboxMetadata {
                     id: sandbox_id,
+                    name,
+                    hostname,
                     template_builder,
                     snapshot_id: image_ref,
                     snapshot_alias: None,
@@ -802,6 +823,7 @@ where
 
             let mut metadata = source_metadata.clone();
             metadata.id = sandbox_id;
+            metadata.name = None;
             metadata.state = SandboxState::Running;
             metadata.created_at = now;
             metadata.paused_state = None;

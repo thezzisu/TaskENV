@@ -14,6 +14,8 @@ pub struct Args {
 struct Row {
     #[tabled(rename = "SANDBOX ID")]
     sandbox_id: String,
+    name: String,
+    hostname: String,
     template: String,
     state: String,
     #[tabled(rename = "CPU")]
@@ -34,6 +36,8 @@ pub fn run(args: Args) -> Result<()> {
         &sandboxes,
         |s: &ListedSandbox| Row {
             sandbox_id: s.sandbox_id.clone(),
+            name: output::dash(s.name.clone()),
+            hostname: output::dash(s.hostname.clone()),
             template: s.alias.clone().unwrap_or_else(|| s.template_id.clone()),
             state: output::dash(s.state.clone()),
             cpu: output::dash(s.cpu_count),

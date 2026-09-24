@@ -30,6 +30,12 @@ pub enum NewTimeout {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SandboxMetadata {
     pub id: SandboxId,
+    /// Optional human-readable name unique within the deployment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Hostname requested inside the guest. Older records default to taskenv.
+    #[serde(default = "default_hostname")]
+    pub hostname: String,
     /// Server-owned template builder, excluded from public sandbox APIs.
     #[serde(default)]
     pub template_builder: bool,
@@ -74,6 +80,8 @@ impl Default for SandboxMetadata {
     fn default() -> Self {
         Self {
             id: SandboxId::new(),
+            name: None,
+            hostname: default_hostname(),
             template_builder: false,
             snapshot_id: "unknown".to_string(),
             snapshot_alias: None,
@@ -102,6 +110,12 @@ impl Default for SandboxMetadata {
             paused_state: None,
         }
     }
+}
+
+pub const DEFAULT_HOSTNAME: &str = "taskenv";
+
+fn default_hostname() -> String {
+    DEFAULT_HOSTNAME.to_owned()
 }
 
 impl SandboxMetadata {

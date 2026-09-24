@@ -27,6 +27,8 @@ pub enum SandboxLaunchSource {
 #[derive(Clone)]
 pub struct CreateSandboxRequest {
     pub source: SandboxLaunchSource,
+    pub name: Option<String>,
+    pub hostname: String,
     /// Launch-time drives that are not part of the source snapshot.
     pub extra_drives: Vec<crate::sandbox::ExtraDrive>,
     /// Whether `extra_drives` already occupy reserved slots in the source
